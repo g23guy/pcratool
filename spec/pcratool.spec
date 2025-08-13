@@ -16,8 +16,8 @@
 #
 
 
-%define tool_common sca
-%define tool_config sca
+%define tool_common pcratool
+%define tool_config pcratool
 %define libbase /usr/lib/%{tool_common}
 %define tool_python %{libbase}/python
 

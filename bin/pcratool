@@ -1642,7 +1642,7 @@ def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path
             if path_data['write_tail']:
                 path_data['extract_here'] = path_data['path']
                 path_data['extract_here_for_reports'] = True
-                msg.normal("Extraction Directory Change", "From command line: {0}".format(path_data['path']))f
+                msg.normal("Extraction Directory Change", "From command line: {0}".format(path_data['path']))
             else:
                 msg.min("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
                 msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(path_data['path']))
