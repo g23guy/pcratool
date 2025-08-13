@@ -1,19 +1,15 @@
 # pcratool
-Pacemaker Cluster Report Analysis Tool
+## Pacemaker Cluster Report Analysis Tool
 
 This project will require significant parsing and analysis of various log files and configuration files to provide a holistic view of the cluster's health and state.
 Here is a breakdown of the milestones you've set, along with some key considerations for each phase.
-Action Items:
-Check with Miles on remote call to SUSE KB - Raine
-Port the initial SCA tool to an initial PCRA tool - Jason
-Determine tool name
-Create GitHub repository for the tool
-The tool exports data in JSON and/or Markup
 
-Application Requirements Completion
+# Application Requirements Completion
 This is the foundation of your project. Before you start coding, you need to clearly define what the application should do.
 Define the scope: What specific problems will this tool solve for a cluster administrator? Will it provide a single, easy-to-read summary, or will it allow for detailed, interactive drilling down into specific events?
-Identify key analysis points: Based on the files you've listed, the tool should be able to identify:
+
+# Identify key analysis points: 
+Based on the files you've listed, the tool should be able to identify:
 Resource status: Which resources are running, stopped, or failed? Where are they located?
 Cluster membership: Which nodes are online, offline, or partitioned?
 SBD status: Is SBD synchronized? Are there split-brain issues?
@@ -36,19 +32,19 @@ Analysis
 
 
 
-Alpha Release with Module Utility Draft (by Sept 1)
+# Alpha Release with Module Utility Draft (by Sept 1)
 This phase is about creating the core engine that can parse the data. The goal is to have a functional, albeit rough, version of the analysis logic.
 
 Pseudocode for Initial Port from SCA Tool
 
-# Entry point
+Entry point
 if __name__ == "__main__":
     Handle signal input
     configure a config file parser
     configure message handling
     main(sys.argv)
     
-# Main
+Main
     set variables
     get config file settings
     process startup options
@@ -146,25 +142,25 @@ Parse and analyze the following node files for each node in the cluster report:
 Data structures: Create a data model that can hold the parsed information in a structured way. This will be crucial for the analysis phase. For example, a Node object might contain properties for its status, resources, sbd_state, etc.
 Initial analysis logic: Implement basic checks and a simple report generation. For example, a function that reads crm_mon.txt and reports if any resources are not started.
 
-Web Interface (by Sept 15)
+# Web Interface (by Sept 15)
 This milestone focuses on presenting the data in a more user-friendly way. The web interface will consume the data from your analysis engine and display it visually.
 Choose a framework: Select a web framework (e.g., Flask) that will handle the front-end and back-end logic.
 Design the UI: Plan a layout that is intuitive for a cluster administrator. A dashboard view with high-level summaries and a drill-down option for detailed logs and resource information would be effective.
 API integration: Should the web interface need an API to communicate with the analysis engine. The analysis tool will act as the data source, and the web interface will be the consumer.
 
-Containerized (by Sept 30)
+# Containerized (by Sept 30)
 Making the application containerized (e.g., using podman) will greatly simplify deployment and portability.
 Create a Dockerfile: Define a Dockerfile that specifies the necessary dependencies and instructions to build your application image.
 Isolate dependencies: Ensure all required libraries and tools are included in the container image, so the application can run in any environment without external dependencies.
 Create a startup script: Write a script that can be executed when the container starts. This script should launch your analysis engine and the web server.
 
-Beta Release with Container (by Oct 1)
+# Beta Release with Container (by Oct 1)
 This is the first end-to-end version of your application. The container should contain both the analysis engine and the web interface, ready for testing.
 User testing: Gather feedback from a small group of users. This is critical for identifying bugs, usability issues, and missing features.
 Bug fixes: Address any issues reported during the beta testing phase.
 Documentation: Start writing user documentation, including how to set up and run the container, and how to interpret the results.
 
-Release Candidate (by Oct 15)
+# Release Candidate (by Oct 15)
 The final step before the official launch. The application should be stable, well-documented, and ready for production use.
 Final polish: Refine the user interface, improve the wording in the analysis reports, and ensure the code is clean and well-commented.
 Performance testing: Verify that the application can handle large cluster report files without significant performance degradation.
