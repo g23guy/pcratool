@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250814.1'
+SVER = '0.0.1-dev.250814.2'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
@@ -26,6 +26,8 @@ SVER = '0.0.1-dev.250814.1'
 #    Jason Record <jason.record@suse.com>
 #
 ##############################################################################
+
+import pprint
 
 import os
 import re
@@ -1094,8 +1096,8 @@ def i_am_root():
 class SCAReport():
     REQUIRED_ELEMENTS = ["META_CLASS", "META_CATEGORY", "META_COMPONENT", "PATTERN_ID", "PRIMARY_LINK", "OVERALL", "OVERALL_INFO", "META_LINK_"]
     SEV_TABLE = {'-2': 'temp', '-1': 'partial', '0': 'success', '1': 'recommend', '2': 'promotion', '3': 'warning', '4': 'critical', '5': 'error', '6': 'ignore' }
-    VALID_REPORT_TYPES = ['html', 'json', 'all']
-    default_report_type = 'html'
+    VALID_REPORT_TYPES = ['json', 'all']
+    default_report_type = 'json'
     # REMOVE GITHUB_OWNER when source url is added to results.pattern info
     GITHUB_OWNER = 'https://github.com/openSUSE/'
 
@@ -1189,405 +1191,7 @@ Class instance of {}
             sys.exit(13)
         self.msg.min("SCA Report File", self.report_file)
 
-    def __generate_html_report(self):
-        '''Build the complete HTML report'''
-        self.msg.verbose(" Building HTML report", "Header")
-        self.__get_meta_class_names()
-        self.content += self.__build_html_header()
-
-        self.msg.verbose(" Building HTML report", "Body")
-        #Critical table
-        self.content += '<H2>Conditions Evaluated as Critical<A NAME="Critical"></A></H2>' + "\n"
-        self.content += '<TABLE STYLE="border:3px solid black;border-collapse:collapse;" WIDTH="100%" CELLPADDING="2">' + "\n"
-        self.content += '<TR COLOR="#000000"><TH BGCOLOR="#FF0000"></TH><TH BGCOLOR="#EEEEEE" COLSPAN="3">Category</TH><TH>Message</TH><TH>Solutions</TH><TH BGCOLOR="#FF0000"></TH></TR>' + "\n"
-        self.content += self.__build_severity_table(4)
-        self.content += "</TABLE>" + "\n"
-
-        #Warning table
-        self.content += '<H2>Conditions Evaluated as Warning<A NAME="Warning"></A></H2>' + "\n"
-        self.content += '<TABLE STYLE="border:3px solid black;border-collapse:collapse;" WIDTH="100%" CELLPADDING="2">' + "\n"
-        self.content += '<TR COLOR="#000000"><TH BGCOLOR="#FFFF00"></TH><TH BGCOLOR="#EEEEEE" COLSPAN="3">Category</TH><TH>Message</TH><TH>Solutions</TH><TH BGCOLOR="#FFFF00"></TH></TR>' + "\n"
-        self.content += self.__build_severity_table(3)
-        self.content += "</TABLE>" + "\n"
-
-        #Recommended table
-        self.content += '<H2>Conditions Evaluated as Recommended<A NAME="Recommended"></A></H2>' + "\n"
-        self.content += '<TABLE STYLE="border:3px solid black;border-collapse:collapse;" WIDTH="100%" CELLPADDING="2">' + "\n"
-        self.content += '<TR COLOR="#000000"><TH BGCOLOR="#1975FF"></TH><TH BGCOLOR="#EEEEEE" COLSPAN="3">Category</TH><TH>Message</TH><TH>Solutions</TH><TH BGCOLOR="#1975FF"></TH></TR>' + "\n"
-        self.content += self.__build_severity_table(1)
-        self.content += "</TABLE>" + "\n"
-
-        #Success table
-        self.content += '<H2>Conditions Evaluated as Success<A NAME="Success"></A></H2>' + "\n"
-        self.content += '<TABLE STYLE="border:3px solid black;border-collapse:collapse;" WIDTH="100%" CELLPADDING="2">' + "\n"
-        self.content += '<TR COLOR="#000000"><TH BGCOLOR="#00FF00"></TH><TH BGCOLOR="#EEEEEE" COLSPAN="3">Category</TH><TH>Message</TH><TH>Solutions</TH><TH BGCOLOR="#00FF00"></TH></TR>' + "\n"
-        self.content += self.__build_severity_table(0)
-        self.content += "</TABLE>" + "\n"
-
-        self.msg.verbose(" Building HTML report", "Footer")
-        self.content += self.__build_html_footer()
-
-        self.msg.verbose(" Building HTML report", "Saving File")
-        try:
-            with open(self.report_file, "w") as f:
-                f.write(self.content)
-        except Exception as e:
-            self.msg.min("Error: Cannot write {} file - {}".format(self.report_type, str(e)))
-            self.msg.min()
-            sys.exit(13)
-        self.msg.min("SCA Report File", self.report_file)
-
-    def __get_meta_class_names(self):
-        '''Gathers all the unique class names used in all the applied results'''
-        unique_classes = {}
-        for this_pattern in self.data['results'].keys():
-            if self.data['results'][this_pattern]['valid']:
-                unique_classes[self.data['results'][this_pattern]['class']] = True
-        self.meta_class_names = list(unique_classes.keys())
-
-    def __build_html_header(self):
-        '''Build the HTML report header'''
-        #reset variables
-        html_content = ""
-        html_content += "<!DOCTYPE html>\n"
-        html_content += "<HTML>\n"
-        html_content += "<HEAD>\n"
-        html_content += "<TITLE>SCA Report for " + self.data['sc_info']['serverName'] + "</TITLE>\n"
-        html_content += "<STYLE TYPE=\"text/css\">\n"
-        html_content += "  a {text-decoration: none}  /* no underlined links */\n"
-        html_content += "  a:link {color:#0000FF;}  /* unvisited link */\n"
-        html_content += "  a:visited {color:#0000FF;}  /* visited link */\n"
-        html_content += "</STYLE>\n"
-    
-
-        html_script = "<SCRIPT>\n\
-        function toggle(className)\n\
-        {\n\
-        className = className.replace(/ /g,\".\");\n\
-        var elements = document.querySelectorAll(\".\" + className); for(var i=0; i<elements.length; i++)\n\
-        {\n\
-            if( elements[i].style.display=='none' )\n\
-                {\n\
-                    elements[i].style.display = '';\n\
-                }\n\
-                else\n\
-                {\n\
-                    elements[i].style.display = 'none';\n\
-                }\n\
-        }\n\
-        }\n\n\
-        function showPattern(patternOutput,patternLocation)\n\
-        {\n\
-        alert(patternOutput + \"\\n\\n\" + \"Pattern: \" + patternLocation);\n\
-        }\n\
-        </SCRIPT>"
-
-        html_content += html_script + "\n"
-        html_content += "</HEAD>\n"
-        html_content += "<BODY BGPROPERTIES=FIXED BGCOLOR=\"#FFFFFF\" TEXT=\"#000000\">\n"
-
-        #create HTML from the data we just got
-        html_content += '<H1>Supportconfig Analysis Report</H1>\n'
-        html_content += '<H2><HR />Server Information</H2>\n'
-
-        html_content += '<TABLE CELLPADDING="5">\n'
-        html_content += '<TR><TD><B>Analysis Date:</B></TD><TD>'
-        html_content += self.data['sc_info']['timeAnalysis']
-        html_content += '</TD></TR>\n'
-        html_content += '<TR><TD><B>Supportconfig Run Date:</B></TD><TD>'
-        html_content += self.data['sc_info']['timeArchiveRun']
-        html_content += '</TD></TR>\n'
-        html_content += '<TR><TD><B>Supportconfig File:</B></TD><TD>'
-        html_content += self.data['sc_info']['name']
-        html_content += '</TD></TR>\n'
-        html_content += '</TABLE>\n'
-
-        html_content += '<TABLE CELLPADDING="5">\n'
-        html_content += '<TR><TD>&nbsp;</TD></TR>\n'
-        html_content += '<TR></TR>\n'
-
-        #Server name and hardWare
-        html_content += '<TR><TD><B>Server Name:</B></TD><TD>'
-        html_content += self.data['sc_info']['serverName']
-        html_content += '</TD><TD><B>Hardware:</B></TD><TD>'
-        html_content += self.data['sc_info']['hardWare']
-        html_content += '</TD></TR>\n'
-
-        #Products included in supportconfig
-        for product in self.data['prod_info']:
-            html_content += '<TR><TD><B>'
-            html_content += str(product['nameTag'])
-            html_content += '</B></TD><TD>'
-            html_content += str(product['name'])
-            html_content += '</TD><TD><B>'
-            html_content += str(product['versionTag'])
-            html_content += '</B></TD><TD>'
-            html_content += str(product['version'])
-            html_content += '</TD></TR>\n'
-
-        if self.data['sc_info']['virtualization'] != "None" and self.data['sc_info']['virtualization'] != "":
-            #hypervisor stuff
-            html_content += '<TR><TD><B>Hypervisor:</B></TD><TD>'
-            html_content += self.data['sc_info']['virtualization']
-            html_content += '</TD><TD><B>Identity:</B></TD><TD>'
-            html_content += self.data['sc_info']['vmIdentity']
-            html_content += '</TD></TR>\n'
-
-        #kernel Version and Supportconfig version
-        html_content += '<TR><TD><B>Kernel Version:</B></TD><TD>'
-        html_content += self.data['sc_info']['kernelVersion']
-        html_content += '</TD><TD><B>Supportconfig Version:</B></TD><TD>'
-        html_content += self.data['sc_info']['supportconfigVersion']
-        html_content += '</TD></TR>\n'
-        html_content += '</TABLE>\n'
-        html_content += '<HR />\n'
-        return html_content
-
-    def __build_severity_table(self, given_severity):
-        '''Build the specified severity table for the body of the HTML report'''
-        pattern_source_url = ""
-        primary_link_url = ""
-        severity_table = ""
-        solution_links = ""
-        expandable_class_entries = []
-        class_entries_header = ""
-        class_entries_footer = ""
-
-        #set the color.
-        if given_severity == 4:
-            #red (critical)
-            severity_tag = "Critical "
-            stats_tag = 'critical'
-            color = "FF0000"
-        elif given_severity == 3:
-            #yellow (warning)
-            severity_tag = "Warning "
-            stats_tag = 'warning'
-            color = "FFFF00"
-        elif given_severity == 1:
-            #blue.. ish (recommended)
-            severity_tag = "Recommended "
-            stats_tag = 'recommend'
-            color = "1975FF"
-        elif given_severity == 0:
-            #green (success)
-            severity_tag = "Success "
-            stats_tag = 'success'
-            color ="00FF00"
-        else:
-            #fallback (gray)
-            severity_tag = ""
-            color = "222222"
-
-        # for each meta_class found in all the applied patterns
-        for meta_class in self.meta_class_names:
-            expandable_class_entries = []
-            class_entries_header = ""
-            class_entries_footer = ""
-            patterns_in_class_and_severity = 0
-            # for each valid pattern that matches this meta_class and the given_severity
-            for this_pattern in self.data['results'].keys():
-                solution_links = ""
-                if self.data['results'][this_pattern]['valid']:
-                    if self.data['results'][this_pattern]['class'] == meta_class and self.data['results'][this_pattern]['severity'] == given_severity:
-                        primary_link_id = self.data['results'][this_pattern]['primary_solution']
-                        primary_link_url = self.data['results'][this_pattern]['solution_links'][primary_link_id]
-                        pattern_source_url = self.data['results'][this_pattern]['source']
-
-                        # get all the solutions tags and URL links for this pattern
-                        for link_tag, link_url in self.data['results'][this_pattern]['solution_links'].items():
-                            solution_links += '<A HREF="{}" TARGET="_blank">{}&nbsp;</A>'.format(link_url, link_tag)
-
-                        expandable_class_entries.append('<TR STYLE="border:1px solid black; background: #FFFFFF; display:none;" CLASS="' + meta_class + '">'\
-                            '<TD BGCOLOR="#' + color + '" WIDTH="2%">&nbsp;</TD>'\
-                            '<TD BGCOLOR="#EEEEEE" WIDTH="6%">' + self.data['results'][this_pattern]['class'] + '</TD>'\
-                            '<TD BGCOLOR="#EEEEEE" WIDTH="5%">' + self.data['results'][this_pattern]['category'] + '</TD>'\
-                            '<TD BGCOLOR="#EEEEEE" WIDTH="5%">' + self.data['results'][this_pattern]['component'] + '</TD>'\
-                            '<TD><A HREF="' + primary_link_url + '" TARGET="_blank">' + self.data['results'][this_pattern]['description'] + '</A>&nbsp;&nbsp;'\
-                            '<A ID="PatternLocation" HREF="' + pattern_source_url + '" TARGET="_blank">&nbsp;</A></TD>'\
-                            '<TD WIDTH="8%">' + solution_links + '&nbsp;&nbsp;</TD>'\
-                            '<TD BGCOLOR="#' + color + '" WIDTH="2%">&nbsp;</TD></TR>\n')
-
-            patterns_in_class_and_severity = len(expandable_class_entries)
-            if patterns_in_class_and_severity > 0:
-                class_entries_header = '<TR STYLE="border:1px solid black;color: #0000FF; background: #FFCC99; font-size:80%; font-weight:normal">'\
-                '<TD BGCOLOR="#' + color + '" WIDTH="2%">&nbsp;</TD>'\
-                '<TD BGCOLOR="#FFCC99" WIDTH="6%"><A ID="NewClass" TITLE="Click to Expand/Collapse" HREF="#" onClick="toggle(\''+ meta_class + '\');return false;">' + meta_class + '</A></TD>'\
-                '<TD BGCOLOR="#FFCC99" WIDTH="5%">&nbsp;</TD>'\
-                '<TD BGCOLOR="#FFCC99" WIDTH="5%">&nbsp;</TD>'\
-                '<TD><A ID="NewClass" TITLE="Click to Expand/Collapse" HREF="#" onClick="toggle(\'' + meta_class + '\');return false;">' + str(patterns_in_class_and_severity) + " " + severity_tag + meta_class + " Message(s)" + '</A></TD>'\
-                '<TD WIDTH="8%">&nbsp;</TD>'\
-                '<TD BGCOLOR="#' + color + '" WIDTH="2%">&nbsp;</TD></TR>\n'
-
-                severity_table += class_entries_header
-                severity_table += ''.join(expandable_class_entries)
-
-        if self.data['pattern_stats'][stats_tag] > 0:
-            if self.data['pattern_stats'][stats_tag] > 1:
-                footer_msg = "{} {} Conditions Found".format(self.data['pattern_stats'][stats_tag], severity_tag)
-            else:
-                footer_msg = "{} {} Condition Found".format(self.data['pattern_stats'][stats_tag], severity_tag)
-            class_entries_footer = '<TR STYLE="border:1px solid black;color: #000000; background: #FFCC99; font-size:80%; font-weight:normal">'\
-            '<TD BGCOLOR="#' + color + '" WIDTH="2%">&nbsp;</TD>'\
-            '<TD BGCOLOR="#FFCC99" WIDTH="6%">TOTAL</TD>'\
-            '<TD BGCOLOR="#FFCC99" WIDTH="5%">&nbsp;</TD>'\
-            '<TD BGCOLOR="#FFCC99" WIDTH="5%">&nbsp;</TD>'\
-            '<TD>' + footer_msg + '</TD>'\
-            '<TD WIDTH="8%">&nbsp;</TD>'\
-            '<TD BGCOLOR="#' + color + '" WIDTH="2%">&nbsp;</TD></TR>\n'
-
-        severity_table += class_entries_footer
-
-        return(severity_table)
-
-    def __build_html_footer(self):
-        '''Build the HTML report footer'''
-        footer_content = '\n\n<HR />\n\n<TABLE WIDTH="100%">\n<TR>'\
-            '<TD ALIGN="left" WIDTH="30%">Client: ' + self.data['file_data']['analyzer'] + ' (Report Generated by: SCA Tool)</TD>'\
-            '<TD ALIGN="center">Patterns Evaluated: ' + str(self.data['pattern_stats']['applicable']) + ', Appliable to Server: ' + str(self.data['pattern_stats']['applied']) + '</TD>'\
-            '<TD ALIGN="right" WIDTH="30%"><A HREF="https://www.suse.com/support/" ALT="SUSE Technical Support" TARGET="_blank">SUSE Technical Support</A></TD>'\
-            '</TR>\n</TABLE>\n'
-
-        return footer_content
-
-    def email_report(self, updated_addrs):
-        '''Email the SCA Report to the list of recipients'''
-        self.generate_report()
-        self.email_list = updated_addrs.split(',')
-        self.msg.min("Email Report Recipients", ' '.join(self.email_list))
-
-        email_server = 'localhost'
-        email_to = self.email_list
-        email_from = 'SCA Tool <root>'
-        email_subject = "SCA Report for " + str(self.data['sc_info']['serverName']) + ": " + str(self.data['pattern_stats']['applied']) + "/" + str(self.data['pattern_stats']['applicable']) + ", " + str(self.data['pattern_stats']['critical']) + ":" + str(self.data['pattern_stats']['warning']) + ":" + str(self.data['pattern_stats']['recommend']) + ":" + str(self.data['pattern_stats']['success'])
-        content_type = self.report_type
-
-        # create text email
-        text = "* Supportconfig Analysis Report *\n"
-        text += "Analysis Date:            " + str(self.data['sc_info']['timeAnalysis']) + "\n"
-        text += "Supportconfig Archive:    " + str(self.data['file_data']['embedded_dir']) + "\n"
-        text += "Server Analyzed:          " + str(self.data['sc_info']['serverName']) + "\n"
-        text += "Total Patterns Evaluated: " + str(self.data['pattern_stats']['applicable']) + "\n"
-        text += "Applicable to Server:     " + str(self.data['pattern_stats']['applied']) + "\n"
-        text += "  Critical:               " + str(self.data['pattern_stats']['critical']) + "\n"
-        text += "  Warning:                " + str(self.data['pattern_stats']['warning']) + "\n"
-        text += "  Recommended:            " + str(self.data['pattern_stats']['recommend']) + "\n"
-        text += "  Success:                " + str(self.data['pattern_stats']['success']) + "\n"
-        text += "Source:                   " + str(self.data['file_data']['analyzer']) + "\n"
-
-        # create html email
-        html = '<!DOCTYPE html PUBLIC "-//W3C//DTD Xself.content 1.0 Transitional//EN" '
-        html += '"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">\n'
-        html += '<body>\n'
-        html += '<h1>Supportconfig Analysis Report</h1>\n'
-        html += '<table>\n'
-        html += "<tr><td>Analysis Date:</td><td>" + str(self.data['sc_info']['timeAnalysis']) + '</td></tr>\n'
-        html += "<tr><td>Supportconfig Archive:</td><td>" + str(self.data['file_data']['embedded_dir']) + '</td></tr>\n'
-        html += "<tr><td>Server Analyzed:</td><td>" + str(self.data['sc_info']['serverName']) + '</td></tr>\n'
-        html += "<tr><td>Total Patterns Evaluated:</td><td>" + str(self.data['pattern_stats']['applicable']) + '</td></tr>\n'
-        html += "<tr><td>Applicable to Server:</td><td>" + str(self.data['pattern_stats']['applied']) + '</td></tr>\n'
-        html += "<tr><td>&nbsp;&nbsp;Critical:</td><td>" + str(self.data['pattern_stats']['critical']) + '</td></tr>\n'
-        html += "<tr><td>&nbsp;&nbsp;Warning:</td><td>" + str(self.data['pattern_stats']['warning']) + '</td></tr>\n'
-        html += "<tr><td>&nbsp;&nbsp;Recommended:</td><td>" + str(self.data['pattern_stats']['recommend']) + '</td></tr>\n'
-        html += "<tr><td>&nbsp;&nbsp;Success:</td><td>" + str(self.data['pattern_stats']['success']) + '</td></tr>\n'
-        html += "<tr><td>Source:</td><td>" + str(self.data['file_data']['analyzer']) + '</td></tr>\n'
-        html += "</table>\n</body></html>\n\n"
-        email_msg = MIMEMultipart()
-        email_msg['Subject'] = email_subject
-        email_msg['From'] = email_from
-        email_msg['To'] = ', '.join(email_to)
-        email_msg.attach(MIMEText(text,'plain'))
-        email_msg.attach(MIMEText(html,'html'))
-
-        # now attach the file
-        with open(self.report_file, 'rb') as f:
-            email_file_msg = MIMEApplication(f.read(), _subtype=content_type)
-        email_file_msg.add_header('Content-Disposition','attachment;filename=' + self.report_name)
-        email_msg.attach(email_file_msg)
-
-        # send email
-        smtp_server = None
-        try:
-            smtp_server = smtplib.SMTP(email_server, timeout=15)
-            smtp_server.sendmail(email_from,email_to,email_msg.as_string())
-            return True
-        except Exception as error:
-            print("  Error: Unable to send email: '%s'." % str(error), file=sys.stderr)
-            pass
-        finally:
-            if smtp_server:
-                smtp_server.quit()
-        return False
-
-    def clean_up(self):
-        if self.data['file_data']['type'] == 'dir':
-            if self.data['file_data']['remove_directory']:
-                self.msg.verbose(" Removing Directory", self.data['file_data']['path'])
-                shutil.rmtree(self.data['file_data']['path'])
-        elif self.data['file_data']['type'] == 'file':
-            if self.data['file_data']['remove_directory']:
-                self.msg.verbose(" Removing Directory", self.data['file_data']['embedded_dir'])
-                shutil.rmtree(self.data['file_data']['embedded_dir'])
-            if self.data['file_data']['remove_tarball']:
-                self.msg.verbose(" Removing File", self.data['file_data']['path'])
-                os.remove(self.data['file_data']['path'])
-
-def get_local_supportconfig(msg, config):
-    '''Run supportconfig on the local server if root access available'''
-    local_hostname = str(os.uname()[1])
-    msg.min('Running Supportconfig On', local_hostname)
-    analysis_datetime = datetime.datetime.now()
-    date_stamp = analysis_datetime.strftime("%y%m%d")
-    time_stamp = str(analysis_datetime.hour).zfill(2) + str(analysis_datetime.minute).zfill(2) + str(analysis_datetime.second).zfill(2)
-    supportconfig_output_lines = config_entry(config.get("Supportconfig", "output_lines"))
-    supportconfig_filename_prefix = config_entry(config.get("Supportconfig", "filename_prefix"))
-    local_supportconfig_path = config_entry(config.get("Supportconfig", "path_local"), '/')
-    local_supportconfig_name = local_hostname + "_" + str(date_stamp) + "_" + str(time_stamp)
-    supportconfig_path = local_supportconfig_path + supportconfig_filename_prefix + local_supportconfig_name
-
-    try:
-        cmd = "supportconfig -bB " + local_supportconfig_name + " -t " + local_supportconfig_path
-        msg.debug('Process Command', cmd)
-        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    #if we cannot run supportconfig
-    except Exception:
-        print("Error: Cannot run supportconfig\n", file=sys.stderr)
-        return
-    condition = True
-
-    if( msg.get_level() == msg.LOG_MIN ):
-        if progress_bar_active:
-            scbar = ProgressBar("Gathering Supportconfig: ", supportconfig_output_lines)
-
-    if( msg.get_level() >= msg.LOG_VERBOSE ):
-        msg.verbose('Gathering Supportconfig', 'In Progress')
-    elif( msg.get_level() >= msg.LOG_MIN ):
-        if progress_bar_active:
-            scbar = ProgressBar("Gathering Supportconfig: ", supportconfig_output_lines)
-        else:
-            msg.min('Gathering Supportconfig', 'In Progress')
-
-    while condition:
-        out = p.stdout.read(1)
-        if out != '':
-            if( msg.get_level() >= msg.LOG_VERBOSE ):
-                sys.stdout.write(out)
-                sys.stdout.flush()
-            elif( msg.get_level() >= msg.LOG_MIN ):
-                if out == "\n":
-                    if progress_bar_active:
-                        scbar.inc_count()
-                        scbar.update()
-        condition = not bool(out == "" and p.poll() != None)
-
-    if( msg.get_level() > msg.LOG_QUIET and msg.get_level() <= msg.LOG_NORMAL ):
-        if progress_bar_active:
-            scbar.finish()
-    
-    return supportconfig_path
-
 def evaluate_given_path(msg, given_path):
-#    given_results = {'exists': False, 'given_path': given_path, 'path': '', 'head': '', 'tail': '', 'type': '', 'read_head': False, 'write_head': False, 'exec_head': False, 'read_tail': False, 'write_tail': False, 'exec_tail': False, 'mimetype': ''}
     given_results = {
         'exists': False, 
         'given_path': given_path, 
@@ -1596,8 +1200,8 @@ def evaluate_given_path(msg, given_path):
         'tail': '', 
         'type': '', 
         'tail_mime_type': '',
-        'read_head': False, 'write_head': False, 'exec_head': False, 
-        'read_tail': False, 'write_tail': False, 'exec_tail': False, 
+        'head_read': False, 'head_write': False, 'head_exec': False, 
+        'tail_read': False, 'tail_write': False, 'tail_exec': False, 
     }
 
     if os.path.exists(given_path):
@@ -1606,12 +1210,12 @@ def evaluate_given_path(msg, given_path):
         given_results['head'] = os.path.dirname(given_results['path'])
         given_results['tail'] = os.path.basename(given_results['path'])
         if os.access(given_results['path'], os.R_OK):
-            given_results['read_tail'] = True
+            given_results['tail_read'] = True
         if os.access(given_results['path'], os.W_OK):
-            given_results['write_tail'] = True
+            given_results['tail_write'] = True
         if os.access(given_results['path'], os.X_OK):
-            given_results['exec_tail'] = True
-        if given_results['read_tail']:
+            given_results['tail_exec'] = True
+        if given_results['tail_read']:
             if os.path.isfile(given_results['path']):
                 given_results['type'] = 'file'
                 cmd = "file --brief --mime-type " + given_path
@@ -1623,11 +1227,11 @@ def evaluate_given_path(msg, given_path):
                 given_results['type'] = 'dir'
                 given_results['tail_mime_type'] = 'inode/directory'
         if os.access(given_results['head'], os.R_OK):
-            given_results['read_head'] = True
+            given_results['head_read'] = True
         if os.access(given_results['head'], os.W_OK):
-            given_results['write_head'] = True
+            given_results['head_write'] = True
         if os.access(given_results['head'], os.X_OK):
-            given_results['exec_head'] = True
+            given_results['head_exec'] = True
 
     msg.debug("Evaluate Path", given_results)
     return given_results
@@ -1639,7 +1243,7 @@ def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path
         path_data = evaluate_given_path(msg, extract_path_cmd)
         msg.verbose("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
         if path_data['exists']:
-            if path_data['write_tail']:
+            if path_data['tail_write']:
                 path_data['extract_here'] = path_data['path']
                 path_data['extract_here_for_reports'] = True
                 msg.normal("Extraction Directory Change", "From command line: {0}".format(path_data['path']))
@@ -1657,7 +1261,7 @@ def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path
         path_data = evaluate_given_path(msg, extract_path_config)
         msg.verbose("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
         if path_data['exists']:
-            if path_data['write_tail']:
+            if path_data['tail_write']:
                 path_data['extract_here'] = path_data['path']
                 path_data['extract_here_for_reports'] = True
                 msg.normal("Extraction Directory Change", "From config file: {0}".format(path_data['path']))
@@ -1681,7 +1285,7 @@ def check_report_path_given(msg, config_file, report_path_cmd, report_path_confi
         path_data = evaluate_given_path(msg, report_path_cmd)
         msg.verbose("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
         if path_data['exists']:
-            if path_data['write_tail']:
+            if path_data['tail_write']:
                 msg.normal("SCA Report Directory Change", "From command line: {0}".format(path_data['path']))
             else:
                 msg.min("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
@@ -1697,7 +1301,7 @@ def check_report_path_given(msg, config_file, report_path_cmd, report_path_confi
         path_data = evaluate_given_path(msg, report_path_config)
         msg.verbose("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
         if path_data['exists']:
-            if path_data['write_tail']:
+            if path_data['tail_write']:
                 msg.normal("SCA Report Directory Change", "From config file: {0}".format(path_data['path']))
             else:
                 msg.min("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
@@ -1747,9 +1351,8 @@ def main(argv):
     global width, description_width
     VALID_MIME_TYPES = [ 'application/x-xz', 'application/x-bzip', 'application/x-bzip2','application/x-gzip', 'application/x-tar' ]
 
-    file_data = {} # Final dictionary will be: {'valid': False, 'type': 'Unknown', 'analyzer': 'pcratool', 'remove_tarball': False, 'remove_directory': False}
+
     this_file_data = {}
-    supportconfig_received = ''
     remove_archive = False
     pattern_library = False
     given_type = ''
@@ -1775,8 +1378,6 @@ def main(argv):
         sys.exit(1)
 
     os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path + 'python')
-    os.environ['PERL5LIB'] = os.path.abspath(tool_library_path + 'perl')
-    os.environ['BASHLIB'] = os.path.abspath(tool_library_path + 'bash')
 
     try:
         (optlist, args) = getopt.gnu_getopt(argv[1:], "habde:jno:pl:qrt:vx:", ["help", "all_reports", "batch", "debug", "email=", "json", "normal", "output=", "summary", "log_level=", "quiet", "remove", "type=", "verbose", "extract_here="])
@@ -1842,10 +1443,12 @@ def main(argv):
         for given_source in args:
             msg.normal("Checking", given_source)
             this_file_data = evaluate_given_path(msg, given_source)
-            this_file_data['analyzer'] = "scatool v" + str(SVER)
+            this_file_data['tool_name'] = __file__
+            this_file_data['tool_version'] = SVER
+            this_file_data['extract_here_for_reports'] = False
             this_file_data['remove_tarball'] = False
             this_file_data['remove_directory'] = False
-            this_file_data['extract_here_for_reports'] = False
+            
             if this_file_data['exists']:
                 count += 1
                 if total_args_given > 1:
@@ -1863,7 +1466,7 @@ def main(argv):
                         if preconfigured_report_path:
                             sca_report.set_path(preconfigured_report_path['path'])
                         else:
-                            if this_file_data['write_head']:
+                            if this_file_data['head_write']:
                                 sca_report.set_path(this_file_data['head'])
                             else:
                                 msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
@@ -1871,7 +1474,9 @@ def main(argv):
                                 separate_entry(msg, total_args_given)
                                 continue
                         this_file_data['supportconfig_directory'] = this_file_data['path']
-                        analyze_supportconfig_directory(msg, config, sca_report, this_file_data, email_addr_str)
+#                        analyze_supportconfig_directory(msg, config, sca_report, this_file_data, email_addr_str)
+                        print()
+                        pprint.pprint(this_file_data, indent=4)
                     separate_entry(msg, total_args_given)
 
                 elif this_file_data['type'] == 'file':
@@ -1887,7 +1492,7 @@ def main(argv):
                         this_file_data['extract_here'] = preconfigured_extraction_path['extract_here']
                         this_file_data['extract_here_for_reports'] = preconfigured_extraction_path['extract_here_for_reports']
                     else:
-                        if this_file_data['write_head']:
+                        if this_file_data['head_write']:
                             this_file_data['extract_here'] = this_file_data['head']
                         else:
                             msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(this_file_data['head']))
@@ -1908,17 +1513,19 @@ def main(argv):
                             if this_file_data['extract_here_for_reports']:
                                 sca_report.set_path(this_file_data['extract_here'])
                             else:
-                                if this_file_data['write_head']:
+                                if this_file_data['head_write']:
                                     sca_report.set_path(this_file_data['head'])
                                 else:
                                     msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
                                     msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                     separate_entry(msg, total_args_given)
                                     continue
-                        analyze_supportconfig_directory(msg, config, sca_report, this_file_data, email_addr_str)
+#                        analyze_supportconfig_directory(msg, config, sca_report, this_file_data, email_addr_str)
+                        print()
+                        pprint.pprint(this_file_data, indent=4)
                     separate_entry(msg, total_args_given)
 
-                elif not this_file_data['read_tail']:
+                elif not this_file_data['tail_read']:
                     msg.min(" Error", "Read permisson denied - {0}".format(this_file_data['path']))
                     msg.min(" * Suggestion", "Use chmod or sudo to elevate read permissions")
                     separate_entry(msg, total_args_given)
