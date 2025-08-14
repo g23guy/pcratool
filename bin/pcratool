@@ -1,12 +1,12 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250813.1'
+SVER = '0.0.1-dev.250814.1'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
 # Copyright (c) 2025 SUSE LLC
 #
 # Description:  Analyzes HB report archives for known issues
-# Modified:     2025 Aug 13
+# Modified:     2025 Aug 14
 #
 ##############################################################################
 #
@@ -1745,7 +1745,7 @@ def main(argv):
     '''main entry point'''
     global SVER, progress_bar_active, config_file
     global width, description_width
-    VALID_MIME_TYPES = [ 'application/x-xz', 'application/x-bzip', 'application/x-gzip', 'application/x-tar' ]
+    VALID_MIME_TYPES = [ 'application/x-xz', 'application/x-bzip', 'application/x-bzip2','application/x-gzip', 'application/x-tar' ]
 
     file_data = {} # Final dictionary will be: {'valid': False, 'type': 'Unknown', 'analyzer': 'pcratool', 'remove_tarball': False, 'remove_directory': False}
     this_file_data = {}
