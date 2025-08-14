@@ -1236,6 +1236,17 @@ def evaluate_given_path(msg, given_path):
     msg.debug("Evaluate Path", given_results)
     return given_results
 
+def get_cluster_data(msg, file_data):
+    cluster_data = {
+        'hb_report_date': '',
+        'hb_report_by': '',
+        'nodes': {
+            'list': [],
+        },
+    }
+    
+    return cluster_data
+
 def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path_config):
     path_data = {}
 
@@ -1351,8 +1362,9 @@ def main(argv):
     global width, description_width
     VALID_MIME_TYPES = [ 'application/x-xz', 'application/x-bzip', 'application/x-bzip2','application/x-gzip', 'application/x-tar' ]
 
-
+    analysis_results = {}
     this_file_data = {}
+    this_cluster_data = {}
     remove_archive = False
     pattern_library = False
     given_type = ''
@@ -1474,9 +1486,11 @@ def main(argv):
                                 separate_entry(msg, total_args_given)
                                 continue
                         this_file_data['supportconfig_directory'] = this_file_data['path']
-#                        analyze_supportconfig_directory(msg, config, sca_report, this_file_data, email_addr_str)
+                        analysis_results['directory_data'] = this_file_data
+                        this_cluster_data = get_cluster_data(msg, this_file_data)
+                        analysis_results['cluster_data'] = this_file_data
                         print()
-                        pprint.pprint(this_file_data, indent=4)
+                        pprint.pprint(analysis_results, indent=4)
                     separate_entry(msg, total_args_given)
 
                 elif this_file_data['type'] == 'file':
@@ -1520,9 +1534,9 @@ def main(argv):
                                     msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                     separate_entry(msg, total_args_given)
                                     continue
-#                        analyze_supportconfig_directory(msg, config, sca_report, this_file_data, email_addr_str)
+                        analysis_results['directory_data'] = this_file_data
                         print()
-                        pprint.pprint(this_file_data, indent=4)
+                        pprint.pprint(analysis_results, indent=4)
                     separate_entry(msg, total_args_given)
 
                 elif not this_file_data['tail_read']:
