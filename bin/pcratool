@@ -1531,6 +1531,20 @@ def analyze_cluster(msg, data):
         sys.exit(13)
     msg.min("Cluster Report Data File", report_file)
 
+def clean_up(msg, data):
+    if data['source_data']['valid']:
+        if data['source_data']['remove_directory']:
+            try:
+                shutil.rmtree(data['source_data']['dirpath_data_source'])
+            except:
+                True
+
+        if data['source_data']['remove_tarball']:
+            try:
+                os.remove(data['source_data']['path'])
+            except:
+                True
+
 
 ##############################################################################
 # Main
@@ -1650,6 +1664,7 @@ def main(argv):
                     if remove_archive:
                         this_file_data['remove_directory'] = True
                     if valid_supportconfig_dir(msg, this_file_data['path']):
+                        this_file_data['valid'] = True
                         this_file_data['dirpath_data_source'] = this_file_data['path']
                         sca_report = SCAReport(msg, config)
                         if given_type:
@@ -1669,6 +1684,9 @@ def main(argv):
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster_data'] = this_cluster_data
                         analyze_cluster(msg, report_data)
+                    else:
+                        this_file_data['valid'] = False
+                        report_data['source_data'] = this_file_data
                     separate_entry(msg, total_args_given)
 
                 elif this_file_data['type'] == 'file':
@@ -1693,6 +1711,7 @@ def main(argv):
                             continue
                     supportconfig_dir = extract_supportconfig(msg, this_file_data)
                     if valid_supportconfig_dir(msg, supportconfig_dir):
+                        this_file_data['valid'] = True
                         this_file_data['dirpath_embedded'] = supportconfig_dir
                         this_file_data['dirpath_data_source'] = this_file_data['dirpath_embedded']
 
@@ -1716,6 +1735,9 @@ def main(argv):
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster_data'] = this_cluster_data
                         analyze_cluster(msg, report_data)
+                    else:
+                        this_file_data['valid'] = False
+                        report_data['source_data'] = this_file_data
                     separate_entry(msg, total_args_given)
 
                 elif not this_file_data['tail_read']:
@@ -1727,6 +1749,7 @@ def main(argv):
                     msg.min(" Error", "Unknown file type - {0}".format(this_file_data['path']))
                     separate_entry(msg, total_args_given)
                     continue
+            clean_up(msg, report_data)
         msg.normal()
     else:
         usage()
