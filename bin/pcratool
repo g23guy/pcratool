@@ -1286,7 +1286,7 @@ def get_cluster_data(msg, file_data):
                     last_word = dist.split()[-1]
                     if "SP" in last_word:
                         cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-2]
-                        cluster_data['nodes'][node_name]['os_version_minor'] = last_work.replace("SP", '')
+                        cluster_data['nodes'][node_name]['os_version_minor'] = last_word.replace("SP", '')
                         cluster_data['nodes'][node_name]['distribution'] = dist
                     else:
                         cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-1]
