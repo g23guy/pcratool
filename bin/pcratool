@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250814.2'
+SVER = '0.0.1-dev.250815.1'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
@@ -77,7 +77,7 @@ def usage():
     print(display.format('-r, --remove', "Remove archive files leaving only the SCA Report file. Ignored in debug mode."))
     print(display.format('-t, --type', "SCA Report file output type, options: json, html, all. Default: html"))
     print(display.format('-v, --verbose', "Use log level 3"))
-    print(display.format('-x <path>, --extract_here <path>', "Extract any supportconfig archives to this alternate extraction directory"))
+    print(display.format('-x <path>, --dirpath_extract_here <path>', "Extract any supportconfig archives to this alternate extraction directory"))
 #    print(display.format('-l <level>, --log_level <level>', "Set log level, default: Minimal"))
 #    print(display.format('', "0 Quiet, 1 Minimal, 2 Normal, 3 Verbose, 4 Debug"))
     print()
@@ -1069,7 +1069,7 @@ def valid_supportconfig_dir(msg, given_path):
 def extract_supportconfig(msg, tarball):
     path_in_tarball = ''
     archfile = tarball['path'] 
-    archdir = tarball['extract_here']
+    archdir = tarball['dirpath_extract_here']
     msg.verbose(" Extracting File", archfile)
     cmd = "tar -xvf "  + archfile + " -C " + archdir
     msg.debug('Process Command', cmd)
@@ -1238,13 +1238,103 @@ def evaluate_given_path(msg, given_path):
 
 def get_cluster_data(msg, file_data):
     cluster_data = {
-        'hb_report_date': '',
-        'hb_report_by': '',
-        'nodes': {
-            'list': [],
-        },
+        'nodes': {},
     }
-    
+
+    # open and process the description.txt file 
+    filepath_description = file_data['dirpath_data_source'] + "/description.txt"
+    try:
+        with open(filepath_description) as f:
+            description_file = f.read().splitlines()
+            f.close()
+    except:
+        cluster_data = {}
+
+    if description_file:
+        for line in description_file:
+            if line.startswith("Date: "):
+                cluster_data['hb_report_date'] = line.split(' ', 1)[1]
+            if line.startswith("By: "):
+                cluster_data['hb_report_source'] = line.split(' ', 1)[1]
+            if line.startswith("System info"):
+                node_name = line.split()[2].split(':')[0]
+                cluster_data['nodes'][node_name] = {}
+            line = line.lstrip()
+            if line.startswith("CRM Version: "):
+                cluster_data['nodes'][node_name]['crm'] = line.split()[2]
+            if line.startswith("corosync "):
+                cluster_data['nodes'][node_name]['corosync'] = line.split()[1]
+            if line.startswith("pacemaker "):
+                cluster_data['nodes'][node_name]['pacemaker'] = line.split()[1]
+            if line.startswith("resource-agents "):
+                cluster_data['nodes'][node_name]['resource-agents'] = line.split()[1]
+            if line.startswith("sbd "):
+                cluster_data['nodes'][node_name]['sbd'] = line.split()[1]
+            if line.startswith("Platform: "):
+                cluster_data['nodes'][node_name]['platform'] = line.split()[-1]
+            if line.startswith("Kernel release: "):
+                cluster_data['nodes'][node_name]['kernel'] = line.split()[-1]
+            if line.startswith("Architecture: "):
+                cluster_data['nodes'][node_name]['arch'] = line.split()[-1]
+            if line.startswith("Distribution: "):
+                dist = line.split(' ', 1)[1]
+                cluster_data['nodes'][node_name]['os_version_major'] = line.split()[-2]
+                cluster_data['nodes'][node_name]['os_version_minor'] = line.split()[-1].replace("SP", '')
+                cluster_data['nodes'][node_name]['distribution'] = dist
+
+    for node_name in cluster_data['nodes'].keys():
+        filepath_dc = file_data['dirpath_data_source'] + "/" + node_name + "/DC"
+        filepath_running = file_data['dirpath_data_source'] + "/" + node_name + "/RUNNING"
+        if os.path.exists(filepath_dc):
+            cluster_data['nodes'][node_name]['is_dc'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_dc'] = False
+        if os.path.exists(filepath_running):
+            cluster_data['nodes'][node_name]['is_running'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_running'] = False
+
+    # open and process the description.txt file 
+    filepath_analysis = file_data['dirpath_data_source'] + "/analysis.txt"
+    try:
+        with open(filepath_analysis) as f:
+            analysis_file = f.read().splitlines()
+            f.close()
+    except:
+        analysis_file = ''
+
+    if analysis_file:
+        for line in analysis_file:
+            if "Diff members.txt" in line:
+                if "OK" in line:
+                    cluster_data['insync_members_txt'] = True
+                else:
+                    cluster_data['insync_members_txt'] = False
+
+            if "Diff crm_mon.txt" in line:
+                if "OK" in line:
+                    cluster_data['insync_crm_mon_txt'] = True
+                else:
+                    cluster_data['insync_crm_mon_txt'] = False
+
+            if "Diff corosync.conf" in line:
+                if "OK" in line:
+                    cluster_data['insync_corosync_conf'] = True
+                else:
+                    cluster_data['insync_corosync_conf'] = False
+
+            if "Diff sysinfo.txt" in line:
+                if "OK" in line:
+                    cluster_data['insync_sysinfo_txt'] = True
+                else:
+                    cluster_data['insync_sysinfo_txt'] = False
+
+            if "Diff cib.xml" in line:
+                if "OK" in line:
+                    cluster_data['insync_cib_xml'] = True
+                else:
+                    cluster_data['insync_cib_xml'] = False
+
     return cluster_data
 
 def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path_config):
@@ -1255,25 +1345,25 @@ def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path
         msg.verbose("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
         if path_data['exists']:
             if path_data['tail_write']:
-                path_data['extract_here'] = path_data['path']
+                path_data['dirpath_extract_here'] = path_data['path']
                 path_data['extract_here_for_reports'] = True
                 msg.normal("Extraction Directory Change", "From command line: {0}".format(path_data['path']))
             else:
                 msg.min("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
                 msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(path_data['path']))
-                msg.min(" * Suggestion", "Fix the -x, --extract_here directory\n")
+                msg.min(" * Suggestion", "Fix the -x, --dirpath_extract_here directory\n")
                 sys.exit(2)
         else:
             msg.min("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
             msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
-            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the -x, --extract_here directory\n".format(path_data['given_path']))
+            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the -x, --dirpath_extract_here directory\n".format(path_data['given_path']))
             sys.exit(2)
     elif extract_path_config:
         path_data = evaluate_given_path(msg, extract_path_config)
         msg.verbose("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
         if path_data['exists']:
             if path_data['tail_write']:
-                path_data['extract_here'] = path_data['path']
+                path_data['dirpath_extract_here'] = path_data['path']
                 path_data['extract_here_for_reports'] = True
                 msg.normal("Extraction Directory Change", "From config file: {0}".format(path_data['path']))
             else:
@@ -1337,7 +1427,7 @@ def analyze_supportconfig_directory(msg, config, report, data, email):
     dict1 = {}
     dict2 = {}
 
-    sca_data = SupportconfigAnalysis(msg, config, data['supportconfig_directory'])
+    sca_data = SupportconfigAnalysis(msg, config, data['dirpath_data_source'])
     if sca_data.is_valid():
         dict1['file_data'] = data
         dict2 = sca_data.get_results()
@@ -1350,6 +1440,25 @@ def analyze_supportconfig_directory(msg, config, report, data, email):
         if( msg.get_level() < msg.LOG_DEBUG ):
             report.clean_up()
 
+def analyze_cluster(msg, data):
+#    print()
+#    pprint.pprint(data, indent=4)
+
+    try:
+        os.makedirs(data['directory_data']['dirpath_reports'], exist_ok=True)
+    except OSError as e:
+        print(f"Error creating folder: {e}")
+        sys.exit(13)
+
+    report_file = data['directory_data']['dirpath_reports'] + "/report_data.json"
+    try:
+        with open(report_file, "w") as f:
+            json.dump(data, f, indent = 4)
+    except Exception as e:
+        msg.min("Error: Cannot write {} file - {}".format(report_file, str(e)))
+        msg.min()
+        sys.exit(13)
+    msg.min("Cluster Report Data File", report_file)
 
 
 ##############################################################################
@@ -1362,7 +1471,7 @@ def main(argv):
     global width, description_width
     VALID_MIME_TYPES = [ 'application/x-xz', 'application/x-bzip', 'application/x-bzip2','application/x-gzip', 'application/x-tar' ]
 
-    analysis_results = {}
+    report_data = {}
     this_file_data = {}
     this_cluster_data = {}
     remove_archive = False
@@ -1392,7 +1501,7 @@ def main(argv):
     os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path + 'python')
 
     try:
-        (optlist, args) = getopt.gnu_getopt(argv[1:], "habde:jno:pl:qrt:vx:", ["help", "all_reports", "batch", "debug", "email=", "json", "normal", "output=", "summary", "log_level=", "quiet", "remove", "type=", "verbose", "extract_here="])
+        (optlist, args) = getopt.gnu_getopt(argv[1:], "habde:jno:pl:qrt:vx:", ["help", "all_reports", "batch", "debug", "email=", "json", "normal", "output=", "summary", "log_level=", "quiet", "remove", "type=", "verbose", "dirpath_extract_here="])
     except getopt.GetoptError as exc:
         title()
         print("Error:", exc, file=sys.stderr)
@@ -1428,7 +1537,7 @@ def main(argv):
             msg.set_level(msg.LOG_QUIET)
         elif opt in {"-v", "--verbose"}:
             msg.set_level(msg.LOG_VERBOSE)
-        elif opt in {"-x", "--extract_here"}:
+        elif opt in {"-x", "--dirpath_extract_here"}:
             given_extract_path = arg
         elif opt in {"-l", "--log_level"}:
             user_logging = msg.validate_level(arg)
@@ -1472,25 +1581,25 @@ def main(argv):
                     if remove_archive:
                         this_file_data['remove_directory'] = True
                     if valid_supportconfig_dir(msg, this_file_data['path']):
+                        this_file_data['dirpath_data_source'] = this_file_data['path']
                         sca_report = SCAReport(msg, config)
                         if given_type:
                             sca_report.set_type(given_type)
                         if preconfigured_report_path:
-                            sca_report.set_path(preconfigured_report_path['path'])
+                            this_file_data['dirpath_reports'] = preconfigured_report_path['path']
                         else:
-                            if this_file_data['head_write']:
-                                sca_report.set_path(this_file_data['head'])
+                            if this_file_data['head_write']:    
+                                this_file_data['dirpath_reports'] = this_file_data['dirpath_data_source'] + "_reports"
                             else:
                                 msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
                                 msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                 separate_entry(msg, total_args_given)
                                 continue
-                        this_file_data['supportconfig_directory'] = this_file_data['path']
-                        analysis_results['directory_data'] = this_file_data
+                        this_file_data['dirpath_data_source'] = this_file_data['path']
+                        report_data['directory_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
-                        analysis_results['cluster_data'] = this_file_data
-                        print()
-                        pprint.pprint(analysis_results, indent=4)
+                        report_data['cluster_data'] = this_cluster_data
+                        analyze_cluster(msg, report_data)
                     separate_entry(msg, total_args_given)
 
                 elif this_file_data['type'] == 'file':
@@ -1503,40 +1612,41 @@ def main(argv):
                     this_file_data['remove_directory'] = True
 
                     if preconfigured_extraction_path:
-                        this_file_data['extract_here'] = preconfigured_extraction_path['extract_here']
+                        this_file_data['dirpath_extract_here'] = preconfigured_extraction_path['dirpath_extract_here']
                         this_file_data['extract_here_for_reports'] = preconfigured_extraction_path['extract_here_for_reports']
                     else:
                         if this_file_data['head_write']:
-                            this_file_data['extract_here'] = this_file_data['head']
+                            this_file_data['dirpath_extract_here'] = this_file_data['head']
                         else:
                             msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(this_file_data['head']))
-                            msg.min(" * Suggestion", "Use -x, --extract_here to specify an alternate extraction directory")
+                            msg.min(" * Suggestion", "Use -x, --dirpath_extract_here to specify an alternate extraction directory")
                             separate_entry(msg, total_args_given)
                             continue
                     supportconfig_dir = extract_supportconfig(msg, this_file_data)
                     if valid_supportconfig_dir(msg, supportconfig_dir):
-                        this_file_data['embedded_dir'] = supportconfig_dir
-                        this_file_data['supportconfig_directory'] = this_file_data['embedded_dir']
+                        this_file_data['dirpath_embedded'] = supportconfig_dir
+                        this_file_data['dirpath_data_source'] = this_file_data['dirpath_embedded']
 
                         sca_report = SCAReport(msg, config)
                         if given_type:
                             sca_report.set_type(given_type)
                         if preconfigured_report_path:
-                            sca_report.set_path(preconfigured_report_path['path'])
+                            this_file_data['dirpath_reports'] = preconfigured_report_path['path']
                         else:
                             if this_file_data['extract_here_for_reports']:
-                                sca_report.set_path(this_file_data['extract_here'])
+                                this_file_data['dirpath_reports'] = this_file_data['dirpath_extract_here']
                             else:
                                 if this_file_data['head_write']:
-                                    sca_report.set_path(this_file_data['head'])
+                                    this_file_data['dirpath_reports'] = this_file_data['dirpath_data_source'] + "_reports"
                                 else:
                                     msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
                                     msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                     separate_entry(msg, total_args_given)
                                     continue
-                        analysis_results['directory_data'] = this_file_data
-                        print()
-                        pprint.pprint(analysis_results, indent=4)
+                        report_data['directory_data'] = this_file_data
+                        this_cluster_data = get_cluster_data(msg, this_file_data)
+                        report_data['cluster_data'] = this_cluster_data
+                        analyze_cluster(msg, report_data)
                     separate_entry(msg, total_args_given)
 
                 elif not this_file_data['tail_read']:
