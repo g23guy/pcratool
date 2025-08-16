@@ -1,12 +1,12 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250815.1'
+SVER = '0.0.1-dev.250816.1'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
 # Copyright (c) 2025 SUSE LLC
 #
 # Description:  Analyzes HB report archives for known issues
-# Modified:     2025 Aug 14
+# Modified:     2025 Aug 16
 #
 ##############################################################################
 #
@@ -68,8 +68,8 @@ def usage():
     print(display.format('-a, --all_reports', "Set report --type all"))
     print(display.format('-b, --batch', "Batch mode that disables the progress bar"))
     print(display.format('-d, --debug', "Use log level 4"))
-    print(display.format('-e <list>, --email <list>', "Send the SCA Report file to email address(es) provided. Comma separated list"))
     print(display.format('-j, --json', "Set report --type json"))
+    print(display.format('-k, --keep', "Do not delete extracted directories"))
     print(display.format('-n, --normal', "Use log level 2, default log level: Minimal"))
     print(display.format('-o <path>, --output <path>', "SCA Report file output directory"))
     print(display.format('-p, --summary', "Print a pattern summary"))
@@ -1587,7 +1587,7 @@ def main(argv):
     os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path + 'python')
 
     try:
-        (optlist, args) = getopt.gnu_getopt(argv[1:], "habde:jno:pl:qrt:vx:", ["help", "all_reports", "batch", "debug", "email=", "json", "normal", "output=", "summary", "log_level=", "quiet", "remove", "type=", "verbose", "dirpath_extract_here="])
+        (optlist, args) = getopt.gnu_getopt(argv[1:], "habdjkno:pl:qrt:vx:", ["help", "all_reports", "batch", "debug", "json", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "type=", "verbose", "dirpath_extract_here="])
     except getopt.GetoptError as exc:
         title()
         print("Error:", exc, file=sys.stderr)
@@ -1610,6 +1610,8 @@ def main(argv):
             email_addr_str = arg
         elif opt in {"-j", "--json"}:
             given_type = "json"
+        elif opt in {"-k", "--keep"}:
+            remove_extracted_directory = False
         elif opt in {"-n", "--normal"}:
             msg.set_level(msg.LOG_NORMAL)
         elif opt in {"-o", "--output"}:
