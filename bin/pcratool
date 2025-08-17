@@ -1251,14 +1251,34 @@ def get_cluster_data(msg, file_data):
 # analysis.txt
 # description.txt
 #
-# cnt_nodes_total
-# cnt_nodes_included
-# cnt_nodes_running
-# cluster_has_quorum
-# cnt_resources_total
-# cnt_resources_running
-# permissions_valid bool
 # /hb_report-20230823-1722 one stopped node
+
+    cluster_data['cnt_nodes_configured'] = -1
+    cluster_data['cnt_nodes_included'] = 0
+    cluster_data['cnt_resources_configured'] = -1
+    cluster_data['has_quorum'] = False
+    cluster_data['nodes_online'] = []
+    cluster_data['nodes_offline'] = []
+
+    ##### description.txt
+    filename = "description.txt"
+    msg.debug("File", filename)
+    filepath = file_data['dirpath_data_source'] + "/" + filename
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+        msg.verbose()
+        filedata = ''
+
+    if filedata:
+        for line in filedata:
+            if line.startswith("Date: "):
+                cluster_data['hb_report_date'] = line.split(' ', 1)[1]
+            if line.startswith("By: "):
+                cluster_data['hb_report_by'] = line.split(' ', 1)[1]
 
     ##### analysis.txt
     filename = "analysis.txt"
@@ -1269,8 +1289,8 @@ def get_cluster_data(msg, file_data):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.min("Error: Cannot open {} file - {}".format(filepath, str(e)))
-        msg.min()
+        msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+        msg.verbose()
         filedata = ''
 
     if filedata:
@@ -1309,7 +1329,9 @@ def get_cluster_data(msg, file_data):
     for node_data_source in subfolders:
         msg.verbose("Evaluating Node Directory", node_data_source)
         node_name = os.path.basename(node_data_source)
-        cluster_data['nodes'][node_name] = {}
+        if node_name not in cluster_data['nodes']:
+            cluster_data['nodes'][node_name] = {}
+        cluster_data['cnt_nodes_included'] += 1
 
         ##### permissions.txt
         filename = "permissions.txt"
@@ -1320,8 +1342,8 @@ def get_cluster_data(msg, file_data):
                 filedata = f.read().splitlines()
                 f.close()
         except Exception as e:
-            msg.min("Error: Cannot open {} file - {}".format(filepath, str(e)))
-            msg.min()
+            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.verbose()
             cluster_data['nodes'][node_name]['permissions_valid'] = None
             filedata = ''
 
@@ -1340,8 +1362,8 @@ def get_cluster_data(msg, file_data):
                 filedata = f.read().splitlines()
                 f.close()
         except Exception as e:
-            msg.min("Error: Cannot open {} file - {}".format(filepath, str(e)))
-            msg.min()
+            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.verbose()
             filedata = ''
 
         tmp_dist_list = []
@@ -1418,38 +1440,61 @@ def get_cluster_data(msg, file_data):
                             cluster_data['nodes'][node_name]['os_version_major'] = ''
                             cluster_data['nodes'][node_name]['os_version_minor'] = ''
 
+        ##### members.txt
+        filename = "members.txt"
+        msg.debug("File", filename)
+        filepath = node_data_source + "/" + filename
+        try:
+            with open(filepath) as f:
+                filedata = f.read().splitlines()
+                f.close()
+        except Exception as e:
+            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.verbose()
+            filedata = ''
 
-    print()
-    pprint.pprint(cluster_data, indent=4)
-    
-    sys.exit(255)
+        if filedata:
+            node_list = []
+            for line in filedata:
+                node_list = line.split()
+            for member_node in node_list:
+                if member_node not in cluster_data['nodes']:
+                    cluster_data['nodes'][member_node] = {}
 
-def xxxx():
-    filepath_members = file_data['dirpath_data_source'] + "/members.txt"
-    try:
-        with open(filepath_members) as f:
-            members_file = f.read().splitlines()
-            f.close()
-    except:
-        members_file = ''
+        ##### crm_mon.txt
+        filename = "crm_mon.txt"
+        msg.debug("File", filename)
+        filepath = node_data_source + "/" + filename
+        try:
+            with open(filepath) as f:
+                filedata = f.read().splitlines()
+                f.close()
+        except Exception as e:
+            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.verbose()
+            filedata = ''
 
-    if members_file:
-        for line in members_file:
-            member_list = line.split()
-        for node_name in member_list:
-            cluster_data['nodes'][node_name] = {}
-
-    # open and process the description.txt file 
-    filepath_description = file_data['dirpath_data_source'] + "/description.txt"
-    try:
-        with open(filepath_description) as f:
-            description_file = f.read().splitlines()
-            f.close()
-    except:
-        description_file = ''
-        cluster_data = {}
-
-
+        if filedata:
+            node_list = []
+            for line in filedata:
+                if "partition with quorum" in line:
+                    cluster_data['has_quorum'] = True
+                if "Current DC" in line:
+                    dc_node_name = line.split()[3]
+                if " nodes configured" in line:
+                    value = line.split()[1]
+                    if value.isdigit():
+                        cluster_data['cnt_nodes_configured'] = int(value)
+                if " resource instances configured" in line:
+                    value = line.split()[1]
+                    if value.isdigit():
+                        cluster_data['cnt_resources_configured'] = int(value)
+                if "* Online: [" in line:
+                    entry = re.findall(r"\[(.*?)\]", line)
+                    cluster_data['nodes_online'] = entry[0].strip().split()
+                if "* OFFLINE: [" in line:
+                    entry = re.findall(r"\[(.*?)\]", line)
+                    cluster_data['nodes_offline'] = entry[0].strip().split()
 
     return cluster_data
 
