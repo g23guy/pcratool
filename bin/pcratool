@@ -1,12 +1,12 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250816.1'
+SVER = '0.0.1-dev.250818.1'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
 # Copyright (c) 2025 SUSE LLC
 #
 # Description:  Analyzes HB report archives for known issues
-# Modified:     2025 Aug 16
+# Modified:     2025 Aug 18
 #
 ##############################################################################
 #
