@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250818.1'
+SVER = '0.0.1-dev.250818.2'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
@@ -1477,22 +1477,29 @@ def get_cluster_data(msg, file_data):
         if filedata:
             node_list = []
             for line in filedata:
+                line = line.strip()
+                if line.startswith('* '):
+                    line = line[2:]
                 if "partition with quorum" in line:
                     cluster_data['has_quorum'] = True
                 if "Current DC" in line:
-                    dc_node_name = line.split()[3]
+                    dc_node_name = line.split()[2]
                 if " nodes configured" in line:
-                    value = line.split()[1]
+                    value = line.split()[0]
                     if value.isdigit():
                         cluster_data['cnt_nodes_configured'] = int(value)
                 if " resource instances configured" in line:
-                    value = line.split()[1]
+                    value = line.split()[0]
                     if value.isdigit():
                         cluster_data['cnt_resources_configured'] = int(value)
-                if "* Online: [" in line:
+                if " resources configured" in line:
+                    value = line.split()[0]
+                    if value.isdigit():
+                        cluster_data['cnt_resources_configured'] = int(value)
+                if "Online: [" in line:
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_online'] = entry[0].strip().split()
-                if "* OFFLINE: [" in line:
+                if "OFFLINE: [" in line:
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_offline'] = entry[0].strip().split()
 
