@@ -1242,18 +1242,39 @@ def get_cluster_data(msg, file_data):
     cluster_data = {
         'nodes': {},
     }
+# for each cluster node directory, use: subfolders = [ f.path for f in os.scandir(folder) if f.is_dir() ]
+#   permissions.txt
+#   sysinfo.txt
+#   on first running node
+#       members.txt
+#       crm_mon.txt
+# analysis.txt
+# description.txt
+#
+# cnt_nodes_total
+# cnt_nodes_included
+# cnt_nodes_running
+# cluster_has_quorum
+# cnt_resources_total
+# cnt_resources_running
+# permissions_valid bool
+# /hb_report-20230823-1722 one stopped node
 
-    # open and process the analysis.txt file 
-    filepath_analysis = file_data['dirpath_data_source'] + "/analysis.txt"
+    ##### analysis.txt
+    filename = "analysis.txt"
+    msg.debug("File", filename)
+    filepath = file_data['dirpath_data_source'] + "/" + filename
     try:
-        with open(filepath_analysis) as f:
-            analysis_file = f.read().splitlines()
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
             f.close()
-    except:
-        analysis_file = ''
+    except Exception as e:
+        msg.min("Error: Cannot open {} file - {}".format(filepath, str(e)))
+        msg.min()
+        filedata = ''
 
-    if analysis_file:
-        for line in analysis_file:
+    if filedata:
+        for line in filedata:
             if "Diff members.txt" in line:
                 if "OK" in line:
                     cluster_data['insync_members_txt'] = True
@@ -1284,46 +1305,48 @@ def get_cluster_data(msg, file_data):
                 else:
                     cluster_data['insync_cib_xml'] = False
 
-    filepath_members = file_data['dirpath_data_source'] + "/members.txt"
-    try:
-        with open(filepath_members) as f:
-            members_file = f.read().splitlines()
-            f.close()
-    except:
-        members_file = ''
+    subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
+    for node_data_source in subfolders:
+        msg.verbose("Evaluating Node Directory", node_data_source)
+        node_name = os.path.basename(node_data_source)
+        cluster_data['nodes'][node_name] = {}
 
-    if members_file:
-        for line in members_file:
-            member_list = line.split()
-        for node_name in member_list:
-            cluster_data['nodes'][node_name] = {}
+        ##### permissions.txt
+        filename = "permissions.txt"
+        msg.debug("File", filename)
+        filepath = node_data_source + "/" + filename
+        try:
+            with open(filepath) as f:
+                filedata = f.read().splitlines()
+                f.close()
+        except Exception as e:
+            msg.min("Error: Cannot open {} file - {}".format(filepath, str(e)))
+            msg.min()
+            cluster_data['nodes'][node_name]['permissions_valid'] = None
+            filedata = ''
 
-    # open and process the description.txt file 
-    filepath_description = file_data['dirpath_data_source'] + "/description.txt"
-    try:
-        with open(filepath_description) as f:
-            description_file = f.read().splitlines()
-            f.close()
-    except:
-        description_file = ''
-        cluster_data = {}
+        if filedata:
+            cluster_data['nodes'][node_name]['permissions_valid'] = True
+            for line in filedata:
+                if "OK" not in line:
+                    cluster_data['nodes'][node_name]['permissions_valid'] = False
 
-    tmp_dist_list = []
-    if description_file:
-        node_name = ''
-        for line in description_file:
-            if line.startswith("Date: "):
-                cluster_data['hb_report_date'] = line.split(' ', 1)[1]
-            if line.startswith("By: "):
-                cluster_data['hb_report_source'] = line.split(' ', 1)[1]
-            if line.startswith("System info"):
-                node_name = line.split()[2].split(':')[0]
-                cluster_data['nodes'][node_name] = {}
-            if line.startswith("[Info from node "):
-                node_name = line.split()[3].replace("]:", '')
-                cluster_data['nodes'][node_name] = {}
+        ##### sysinfo.txt
+        filename = "sysinfo.txt"
+        msg.debug("File", filename)
+        filepath = node_data_source + "/" + filename
+        try:
+            with open(filepath) as f:
+                filedata = f.read().splitlines()
+                f.close()
+        except Exception as e:
+            msg.min("Error: Cannot open {} file - {}".format(filepath, str(e)))
+            msg.min()
+            filedata = ''
 
-            if node_name:
+        tmp_dist_list = []
+        if filedata:
+            for line in filedata:
                 line = line.lstrip()
                 if line.startswith("CRM Version: "):
                     cluster_data['nodes'][node_name]['crm'] = line.split()[2]
@@ -1395,19 +1418,38 @@ def get_cluster_data(msg, file_data):
                             cluster_data['nodes'][node_name]['os_version_major'] = ''
                             cluster_data['nodes'][node_name]['os_version_minor'] = ''
 
-    for node_name in cluster_data['nodes'].keys():
-        dirpath_base = file_data['dirpath_data_source'] + "/" + node_name
-        filepath_dc = dirpath_base + "/DC"
-        filepath_running = dirpath_base + "/RUNNING"
-        if os.path.exists(dirpath_base):
-            if os.path.exists(filepath_dc):
-                cluster_data['nodes'][node_name]['is_dc'] = True
-            else:
-                cluster_data['nodes'][node_name]['is_dc'] = False
-            if os.path.exists(filepath_running):
-                cluster_data['nodes'][node_name]['is_running'] = True
-            else:
-                cluster_data['nodes'][node_name]['is_running'] = False
+
+    print()
+    pprint.pprint(cluster_data, indent=4)
+    
+    sys.exit(255)
+
+def xxxx():
+    filepath_members = file_data['dirpath_data_source'] + "/members.txt"
+    try:
+        with open(filepath_members) as f:
+            members_file = f.read().splitlines()
+            f.close()
+    except:
+        members_file = ''
+
+    if members_file:
+        for line in members_file:
+            member_list = line.split()
+        for node_name in member_list:
+            cluster_data['nodes'][node_name] = {}
+
+    # open and process the description.txt file 
+    filepath_description = file_data['dirpath_data_source'] + "/description.txt"
+    try:
+        with open(filepath_description) as f:
+            description_file = f.read().splitlines()
+            f.close()
+    except:
+        description_file = ''
+        cluster_data = {}
+
+
 
     return cluster_data
 
