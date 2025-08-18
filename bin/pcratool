@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250818.2'
+SVER = '0.0.1-dev.250818.3'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
@@ -1259,6 +1259,8 @@ def get_cluster_data(msg, file_data):
     cluster_data['has_quorum'] = False
     cluster_data['nodes_online'] = []
     cluster_data['nodes_offline'] = []
+    cluster_data['nodes_maintenance'] = []
+    cluster_data['permissions_valid_all_nodes'] = 1
 
     ##### description.txt
     filename = "description.txt"
@@ -1352,6 +1354,7 @@ def get_cluster_data(msg, file_data):
             for line in filedata:
                 if "OK" not in line:
                     cluster_data['nodes'][node_name]['permissions_valid'] = False
+                    cluster_data['permissions_valid_all_nodes'] = 0
 
         ##### sysinfo.txt
         filename = "sysinfo.txt"
@@ -1502,6 +1505,29 @@ def get_cluster_data(msg, file_data):
                 if "OFFLINE: [" in line:
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_offline'] = entry[0].strip().split()
+                if "maintenance" in line:
+                    entry = re.findall(r"Node (.*?): maintenance", line)
+                    if entry:
+                        if entry[0] not in cluster_data['nodes_maintenance']:
+                            cluster_data['nodes_maintenance'].append(entry[0])
+
+    for node_name in cluster_data['nodes'].keys():
+        if node_name == dc_node_name:
+            cluster_data['nodes'][node_name]['is_dc'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_dc'] = False
+
+        if node_name in cluster_data['nodes_maintenance']:
+            cluster_data['nodes'][node_name]['is_maintenance'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_maintenance'] = False
+
+        if node_name in cluster_data['nodes_offline']:
+            cluster_data['nodes'][node_name]['is_running'] = False
+        else:
+            cluster_data['nodes'][node_name]['is_running'] = True
+    if cluster_data['cnt_nodes_configured'] != cluster_data['cnt_nodes_included']:
+        cluster_data['permissions_valid_all_nodes'] = -1
 
     return cluster_data
 
@@ -1782,7 +1808,7 @@ def main(argv):
                         this_file_data['dirpath_data_source'] = this_file_data['path']
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
-                        report_data['cluster_data'] = this_cluster_data
+                        report_data['cluster'] = this_cluster_data
                         analyze_cluster(msg, report_data)
                     else:
                         this_file_data['valid'] = False
@@ -1833,7 +1859,7 @@ def main(argv):
                                     continue
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
-                        report_data['cluster_data'] = this_cluster_data
+                        report_data['cluster'] = this_cluster_data
                         analyze_cluster(msg, report_data)
                     else:
                         this_file_data['valid'] = False
