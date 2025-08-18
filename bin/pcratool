@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SVER = '0.0.1-dev.250818.3'
+SVER = '0.0.2-dev.250818.1'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
@@ -1261,6 +1261,7 @@ def get_cluster_data(msg, file_data):
     cluster_data['nodes_offline'] = []
     cluster_data['nodes_maintenance'] = []
     cluster_data['permissions_valid_all_nodes'] = 1
+    cluster_data['stonith']= {'sbd': {'found': False, 'config': {}}}
 
     ##### description.txt
     filename = "description.txt"
@@ -1279,8 +1280,10 @@ def get_cluster_data(msg, file_data):
         for line in filedata:
             if line.startswith("Date: "):
                 cluster_data['hb_report_date'] = line.split(' ', 1)[1]
+                msg.debug("> hb_report_data")
             if line.startswith("By: "):
                 cluster_data['hb_report_by'] = line.split(' ', 1)[1]
+                msg.debug("> hb_report_by")
 
     ##### analysis.txt
     filename = "analysis.txt"
@@ -1298,30 +1301,35 @@ def get_cluster_data(msg, file_data):
     if filedata:
         for line in filedata:
             if "Diff members.txt" in line:
+                msg.debug("> insync_members_txt")
                 if "OK" in line:
                     cluster_data['insync_members_txt'] = True
                 else:
                     cluster_data['insync_members_txt'] = False
 
             if "Diff crm_mon.txt" in line:
+                msg.debug("> insync_crm_mon_txt")
                 if "OK" in line:
                     cluster_data['insync_crm_mon_txt'] = True
                 else:
                     cluster_data['insync_crm_mon_txt'] = False
 
             if "Diff corosync.conf" in line:
+                msg.debug("> insync_corosync_conf")
                 if "OK" in line:
                     cluster_data['insync_corosync_conf'] = True
                 else:
                     cluster_data['insync_corosync_conf'] = False
 
             if "Diff sysinfo.txt" in line:
+                msg.debug("> insync_sysinfo_txt")
                 if "OK" in line:
                     cluster_data['insync_sysinfo_txt'] = True
                 else:
                     cluster_data['insync_sysinfo_txt'] = False
 
             if "Diff cib.xml" in line:
+                msg.debug("> insync_cib_xml")
                 if "OK" in line:
                     cluster_data['insync_cib_xml'] = True
                 else:
@@ -1329,16 +1337,18 @@ def get_cluster_data(msg, file_data):
 
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
-        msg.verbose("Evaluating Node Directory", node_data_source)
+        msg.verbose("Processing cluster info", node_data_source)
         node_name = os.path.basename(node_data_source)
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
         cluster_data['cnt_nodes_included'] += 1
+        msg.debug("incremented cnt_nodes_included")
 
         ##### permissions.txt
         filename = "permissions.txt"
         msg.debug("File", filename)
         filepath = node_data_source + "/" + filename
+        msg.debug("> permissions_valid")
         try:
             with open(filepath) as f:
                 filedata = f.read().splitlines()
@@ -1371,6 +1381,7 @@ def get_cluster_data(msg, file_data):
 
         tmp_dist_list = []
         if filedata:
+            msg.debug("> pkg versions and summary info")
             for line in filedata:
                 line = line.lstrip()
                 if line.startswith("CRM Version: "):
@@ -1462,6 +1473,7 @@ def get_cluster_data(msg, file_data):
                 node_list = line.split()
             for member_node in node_list:
                 if member_node not in cluster_data['nodes']:
+                    msg.debug("> Added node - {}".format(member_node))
                     cluster_data['nodes'][member_node] = {}
 
         ##### crm_mon.txt
@@ -1484,37 +1496,118 @@ def get_cluster_data(msg, file_data):
                 if line.startswith('* '):
                     line = line[2:]
                 if "partition with quorum" in line:
+                    msg.debug("> found quorum status")
                     cluster_data['has_quorum'] = True
                 if "Current DC" in line:
                     dc_node_name = line.split()[2]
+                    msg.debug("> found DC node {}".format(dc_node_name))
+                    if dc_node_name not in cluster_data['nodes']:
+                        cluster_data['nodes'][dc_node_name] = {}
+                    cluster_data['nodes'][dc_node_name]['is_dc'] = True
                 if " nodes configured" in line:
+                    msg.debug("> cnt_nodes_configured")
                     value = line.split()[0]
                     if value.isdigit():
                         cluster_data['cnt_nodes_configured'] = int(value)
                 if " resource instances configured" in line:
+                    msg.debug("> cnt_resources_configured")
                     value = line.split()[0]
                     if value.isdigit():
                         cluster_data['cnt_resources_configured'] = int(value)
                 if " resources configured" in line:
+                    msg.debug("> cnt_resources_configured")
                     value = line.split()[0]
                     if value.isdigit():
                         cluster_data['cnt_resources_configured'] = int(value)
                 if "Online: [" in line:
+                    msg.debug("> nodes_online list")
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_online'] = entry[0].strip().split()
                 if "OFFLINE: [" in line:
+                    msg.debug("> nodes_offline list")
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_offline'] = entry[0].strip().split()
                 if "maintenance" in line:
+                    msg.debug("> nodes_maintenance list")
                     entry = re.findall(r"Node (.*?): maintenance", line)
                     if entry:
                         if entry[0] not in cluster_data['nodes_maintenance']:
                             cluster_data['nodes_maintenance'].append(entry[0])
+                if "stonith:" in line:
+                    if "stonith:external/sbd" in line:
+                        cluster_data['stonith']['sbd']['found'] = True
+                        msg.debug("> stonith:external/sbd found")
+                    else:
+                        entry = re.findall(r"\(stonith:(.*)\):", line)
+                        if entry:
+                            _type = entry[0]
+                            if _type not in cluster_data['stonith']:
+                                cluster_data['stonith'][_type] = {}
+                                cluster_data['stonith'][_type]['found'] = True
+                        msg.debug("> stonith:{} found".format(_type))
+                                            
 
+    if cluster_data['stonith']['sbd']['found']:
+        for node_data_source in subfolders:
+            msg.verbose("Processing SBD info", node_data_source)
+            node_name = os.path.basename(node_data_source)
+
+            ##### sbd.txt
+            filename = "sbd.txt"
+            msg.debug("File", filename)
+            filepath = node_data_source + "/" + filename
+            try:
+                with open(filepath) as f:
+                    filedata = f.read().splitlines()
+                    f.close()
+            except Exception as e:
+                msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+                msg.verbose()
+                filedata = ''
+
+            if filedata:
+                for line in filedata:
+                    if line and line[0].isdigit():
+                        entry = line.split()
+                        server = entry[1]
+                        status = entry[2]
+                        if 'nodes' not in cluster_data['stonith']['sbd']:
+                            cluster_data['stonith']['sbd']['nodes'] = {}
+                        if server not in cluster_data['stonith']['sbd']['nodes']:
+                            cluster_data['stonith']['sbd']['nodes'][server] = []
+                        cluster_data['stonith']['sbd']['nodes'][server].append(status)
+
+            ##### sbd
+            filename = "sbd"
+            msg.debug("File", filename)
+            filepath = node_data_source + "/" + filename
+            try:
+                with open(filepath) as f:
+                    filedata = f.read().splitlines()
+                    f.close()
+            except Exception as e:
+                msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+                msg.verbose()
+                filedata = ''
+
+            if filedata:
+                for line in filedata:
+                    if line.startswith("#"):
+                        continue
+                    line = line.strip()
+                    if line and "=" in line:
+                        key, value = line.split('=', 1)
+                        if 'SBD_DEVICE' in key:
+                            device_list = value.strip().strip('"').strip("'").split(';')
+                            cluster_data['stonith']['sbd']['config'][key.strip()] = device_list
+                        else:
+                            cluster_data['stonith']['sbd']['config'][key.strip()] = value.strip().strip('"').strip("'")
+                                
+
+
+    msg.debug("Calculating is_dc, nodes_maintenance, is_running, permissions_valid_all_nodes")
     for node_name in cluster_data['nodes'].keys():
-        if node_name == dc_node_name:
-            cluster_data['nodes'][node_name]['is_dc'] = True
-        else:
+        if 'is_dc' not in cluster_data['nodes'][node_name]:
             cluster_data['nodes'][node_name]['is_dc'] = False
 
         if node_name in cluster_data['nodes_maintenance']:

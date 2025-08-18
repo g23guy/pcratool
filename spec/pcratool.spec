@@ -22,7 +22,7 @@
 %define tool_python %{libbase}/python
 
 Name:           pcratool
-Version:        0.0.1
+Version:        0.0.2
 Release:        0
 Summary:        Supportconfig Analysis Server Report
 License:        GPL-3.0
