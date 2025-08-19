@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SVER = '0.0.2-dev.250818.1'
+SVER = '0.0.2-dev.250818.2'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
@@ -1574,8 +1574,8 @@ def get_cluster_data(msg, file_data):
                         if 'nodes' not in cluster_data['stonith']['sbd']:
                             cluster_data['stonith']['sbd']['nodes'] = {}
                         if server not in cluster_data['stonith']['sbd']['nodes']:
-                            cluster_data['stonith']['sbd']['nodes'][server] = []
-                        cluster_data['stonith']['sbd']['nodes'][server].append(status)
+                            cluster_data['stonith']['sbd']['nodes'][server] = {'slots': []}
+                        cluster_data['stonith']['sbd']['nodes'][server]['slots'].append(status)
 
             ##### sbd
             filename = "sbd"
@@ -1603,6 +1603,13 @@ def get_cluster_data(msg, file_data):
                         else:
                             cluster_data['stonith']['sbd']['config'][key.strip()] = value.strip().strip('"').strip("'")
                                 
+        msg.debug("Calculating SBD status per node")
+        for node_name in cluster_data['stonith']['sbd']['nodes'].keys():
+            cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = True
+            for status in cluster_data['stonith']['sbd']['nodes'][node_name]['slots']:
+                if 'clear' not in status:
+                    cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = False
+
 
 
     msg.debug("Calculating is_dc, nodes_maintenance, is_running, permissions_valid_all_nodes")
@@ -1621,6 +1628,7 @@ def get_cluster_data(msg, file_data):
             cluster_data['nodes'][node_name]['is_running'] = True
     if cluster_data['cnt_nodes_configured'] != cluster_data['cnt_nodes_included']:
         cluster_data['permissions_valid_all_nodes'] = -1
+
 
     return cluster_data
 
