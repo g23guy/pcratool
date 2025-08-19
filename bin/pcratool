@@ -24,10 +24,9 @@ SVER = '0.0.3-dev'
 #
 #  Authors/Contributors:
 #    Jason Record <jason.record@suse.com>
+#    Raine Curtis <raine.curtis@suse.com>
 #
 ##############################################################################
-
-import pprint
 
 import os
 import re
@@ -281,7 +280,7 @@ class DisplayMessages():
             print("{}".format(use_char*width))
 
 def valid_archive_dir(msg, given_path):
-    TEST_FILES = ['description.txt', 'ha-log.txt']
+    TEST_FILES = ['description.txt', 'analysis.txt']
     if not os.access(given_path, os.R_OK | os.X_OK):
         msg.min(" Error", "Directory permission denied: {0}".format(given_path))
         msg.min(" * Suggestion", "Try sudo {} {}".format(tool_name, given_path))
@@ -467,25 +466,7 @@ def check_report_path_given(msg, config_file, report_path_cmd, report_path_confi
 
     return path_data
 
-def get_cluster_data(msg, file_data):
-    cluster_data = {
-        'nodes': {},
-        'stonith': {
-            'sbd': {
-                'found': False,
-                'config': {},
-            },
-        },
-        'cnt_nodes_configured': -1,
-        'cnt_nodes_included': 0,
-        'cnt_resources_configured': -1,
-        'has_quorum': False,
-        'nodes_online': [],
-        'nodes_offline': [],
-        'nodes_maintenance': [],
-        'permissions_valid_all_nodes': 1,
-   }
-
+def _get_cluster_basics(msg, file_data, cluster_data):
     ##### description.txt
     filename = "description.txt"
     msg.debug("File", filename)
@@ -558,6 +539,9 @@ def get_cluster_data(msg, file_data):
                 else:
                     cluster_data['insync_cib_xml'] = False
 
+    return cluster_data
+
+def _get_cluster_nodes(msg, file_data, cluster_data):
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         msg.verbose("Processing cluster info", node_data_source)
@@ -565,13 +549,27 @@ def get_cluster_data(msg, file_data):
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
         cluster_data['cnt_nodes_included'] += 1
-        msg.debug("incremented cnt_nodes_included")
+        msg.debug("_get_cluster_nodes: incremented cnt_nodes_included")
+
+        ##### DC and RUNNINIG files
+        file_dc = node_data_source + "/DC"
+        file_running = node_data_source + "/RUNNING"
+        if os.path.exists(file_dc):
+            msg.debug("> found file DC node {}".format(node_name))
+            cluster_data['nodes'][node_name]['is_dc'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_dc'] = False
+
+        if os.path.exists(file_running):
+            cluster_data['nodes'][node_name]['is_running'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_running'] = False
 
         ##### permissions.txt
         filename = "permissions.txt"
-        msg.debug("File", filename)
+        msg.debug("_get_cluster_nodes: File", filename)
         filepath = node_data_source + "/" + filename
-        msg.debug("> permissions_valid")
+        msg.debug("> _get_cluster_nodes: permissions_valid")
         try:
             with open(filepath) as f:
                 filedata = f.read().splitlines()
@@ -591,7 +589,7 @@ def get_cluster_data(msg, file_data):
 
         ##### sysinfo.txt
         filename = "sysinfo.txt"
-        msg.debug("File", filename)
+        msg.debug("_get_cluster_nodes: File", filename)
         filepath = node_data_source + "/" + filename
         try:
             with open(filepath) as f:
@@ -604,7 +602,7 @@ def get_cluster_data(msg, file_data):
 
         tmp_dist_list = []
         if filedata:
-            msg.debug("> pkg versions and summary info")
+            msg.debug("> _get_cluster_nodes: pkg versions and summary info")
             for line in filedata:
                 line = line.lstrip()
                 if line.startswith("CRM Version: "):
@@ -679,7 +677,7 @@ def get_cluster_data(msg, file_data):
 
         ##### members.txt
         filename = "members.txt"
-        msg.debug("File", filename)
+        msg.debug("_get_cluster_nodes: File", filename)
         filepath = node_data_source + "/" + filename
         try:
             with open(filepath) as f:
@@ -696,12 +694,12 @@ def get_cluster_data(msg, file_data):
                 node_list = line.split()
             for member_node in node_list:
                 if member_node not in cluster_data['nodes']:
-                    msg.debug("> Added node - {}".format(member_node))
+                    msg.debug("> _get_cluster_nodes: Added node - {}".format(member_node))
                     cluster_data['nodes'][member_node] = {}
 
         ##### crm_mon.txt
         filename = "crm_mon.txt"
-        msg.debug("File", filename)
+        msg.debug("_get_cluster_nodes: File", filename)
         filepath = node_data_source + "/" + filename
         try:
             with open(filepath) as f:
@@ -723,10 +721,14 @@ def get_cluster_data(msg, file_data):
                     cluster_data['has_quorum'] = True
                 if "Current DC" in line:
                     dc_node_name = line.split()[2]
-                    msg.debug("> found DC node {}".format(dc_node_name))
+                    msg.debug("> found crm_mon DC node {}".format(dc_node_name))
                     if dc_node_name not in cluster_data['nodes']:
                         cluster_data['nodes'][dc_node_name] = {}
-                    cluster_data['nodes'][dc_node_name]['is_dc'] = True
+                    if 'is_dc' in cluster_data['nodes'][dc_node_name]:
+                        if not cluster_data['nodes'][dc_node_name]['is_dc']:
+                            cluster_data['nodes'][dc_node_name]['is_dc_crm'] = True
+                    else:
+                        cluster_data['nodes'][dc_node_name]['is_dc'] = True
                 if " nodes configured" in line:
                     msg.debug("> cnt_nodes_configured")
                     value = line.split()[0]
@@ -768,91 +770,125 @@ def get_cluster_data(msg, file_data):
                                 cluster_data['stonith'][_type] = {}
                                 cluster_data['stonith'][_type]['found'] = True
                         msg.debug("> stonith:{} found".format(_type))
-                                            
 
-    if cluster_data['stonith']['sbd']['found']:
-        for node_data_source in subfolders:
-            msg.verbose("Processing SBD info", node_data_source)
-            node_name = os.path.basename(node_data_source)
+    return cluster_data
 
-            ##### sbd.txt
-            filename = "sbd.txt"
-            msg.debug("File", filename)
-            filepath = node_data_source + "/" + filename
-            try:
-                with open(filepath) as f:
-                    filedata = f.read().splitlines()
-                    f.close()
-            except Exception as e:
-                msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-                msg.verbose()
-                filedata = ''
+def _get_stonith_sbd(msg, file_data, cluster_data):
+    subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
+    for node_data_source in subfolders:
+        msg.verbose("Processing SBD info", node_data_source)
+        node_name = os.path.basename(node_data_source)
 
-            if filedata:
-                for line in filedata:
-                    if line and line[0].isdigit():
-                        entry = line.split()
-                        server = entry[1]
-                        status = entry[2]
-                        if 'nodes' not in cluster_data['stonith']['sbd']:
-                            cluster_data['stonith']['sbd']['nodes'] = {}
-                        if server not in cluster_data['stonith']['sbd']['nodes']:
-                            cluster_data['stonith']['sbd']['nodes'][server] = {'slots': []}
-                        cluster_data['stonith']['sbd']['nodes'][server]['slots'].append(status)
+        ##### sbd.txt
+        filename = "sbd.txt"
+        msg.debug("_get_stonith_sbd: File", filename)
+        filepath = node_data_source + "/" + filename
+        try:
+            with open(filepath) as f:
+                filedata = f.read().splitlines()
+                f.close()
+        except Exception as e:
+            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.verbose()
+            filedata = ''
 
-            ##### sbd
-            filename = "sbd"
-            msg.debug("File", filename)
-            filepath = node_data_source + "/" + filename
-            try:
-                with open(filepath) as f:
-                    filedata = f.read().splitlines()
-                    f.close()
-            except Exception as e:
-                msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-                msg.verbose()
-                filedata = ''
+        if filedata:
+            for line in filedata:
+                if line and line[0].isdigit():
+                    entry = line.split()
+                    server = entry[1]
+                    status = entry[2]
+                    if 'nodes' not in cluster_data['stonith']['sbd']:
+                        cluster_data['stonith']['sbd']['nodes'] = {}
+                    if server not in cluster_data['stonith']['sbd']['nodes']:
+                        cluster_data['stonith']['sbd']['nodes'][server] = {'slots': []}
+                    cluster_data['stonith']['sbd']['nodes'][server]['slots'].append(status)
 
-            if filedata:
-                for line in filedata:
-                    if line.startswith("#"):
-                        continue
-                    line = line.strip()
-                    if line and "=" in line:
-                        key, value = line.split('=', 1)
-                        if 'SBD_DEVICE' in key:
-                            device_list = value.strip().strip('"').strip("'").split(';')
-                            cluster_data['stonith']['sbd']['config'][key.strip()] = device_list
-                        else:
-                            cluster_data['stonith']['sbd']['config'][key.strip()] = value.strip().strip('"').strip("'")
-                                
-        msg.debug("Calculating SBD status")
-        cluster_data['stonith']['sbd']['all_clear'] = True
-        for node_name in cluster_data['stonith']['sbd']['nodes'].keys():
-            cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = True
-            for status in cluster_data['stonith']['sbd']['nodes'][node_name]['slots']:
-                if 'clear' not in status:
-                    cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = False
-                    cluster_data['stonith']['sbd']['all_clear'] = False
+        ##### sbd
+        filename = "sbd"
+        msg.debug("_get_stonith_sbd: File", filename)
+        filepath = node_data_source + "/" + filename
+        try:
+            with open(filepath) as f:
+                filedata = f.read().splitlines()
+                f.close()
+        except Exception as e:
+            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.verbose()
+            filedata = ''
 
+        if filedata:
+            for line in filedata:
+                if line.startswith("#"):
+                    continue
+                line = line.strip()
+                if line and "=" in line:
+                    key, value = line.split('=', 1)
+                    if 'SBD_DEVICE' in key:
+                        device_list = value.strip().strip('"').strip("'").split(';')
+                        cluster_data['stonith']['sbd']['config'][key.strip()] = device_list
+                    else:
+                        cluster_data['stonith']['sbd']['config'][key.strip()] = value.strip().strip('"').strip("'")
+                            
+    msg.debug("_get_stonith_sbd: Calculating stonith SBD status")
+    cluster_data['stonith']['sbd']['all_clear'] = True
+    for node_name in cluster_data['stonith']['sbd']['nodes'].keys():
+        cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = True
+        for status in cluster_data['stonith']['sbd']['nodes'][node_name]['slots']:
+            if 'clear' not in status:
+                cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = False
+                cluster_data['stonith']['sbd']['all_clear'] = False
 
-    msg.debug("Calculating is_dc, nodes_maintenance, is_running, permissions_valid_all_nodes")
+    return cluster_data
+
+def _get_cluster_nodes_state(msg, file_data, cluster_data):
+    msg.debug("_get_cluster_nodes_state: determining nodes_maintenance")
     for node_name in cluster_data['nodes'].keys():
-        if 'is_dc' not in cluster_data['nodes'][node_name]:
-            cluster_data['nodes'][node_name]['is_dc'] = False
-
         if node_name in cluster_data['nodes_maintenance']:
             cluster_data['nodes'][node_name]['is_maintenance'] = True
         else:
             cluster_data['nodes'][node_name]['is_maintenance'] = False
+        if 'is_running' not in cluster_data['nodes'][node_name]:
+            if node_name in cluster_data['nodes_online']:
+                msg.debug("> found in nodes_online: {}".format(node_name))
+                cluster_data['nodes'][node_name]['is_running'] = True
+            else:
+                cluster_data['nodes'][node_name]['is_running'] = False
 
-        if node_name in cluster_data['nodes_offline']:
-            cluster_data['nodes'][node_name]['is_running'] = False
-        else:
-            cluster_data['nodes'][node_name]['is_running'] = True
+        if 'is_dc' not in cluster_data['nodes'][node_name]:
+            msg.debug("> No DC found for {}".format(node_name))
+            cluster_data['nodes'][node_name]['is_dc'] = False
+
+    return cluster_data
+
+def get_cluster_data(msg, file_data):
+    cluster_data = {
+        'nodes': {},
+        'stonith': {
+            'sbd': {
+                'found': False,
+                'config': {},
+            },
+        },
+        'cnt_nodes_configured': -1,
+        'cnt_nodes_included': 0,
+        'cnt_resources_configured': -1,
+        'has_quorum': False,
+        'nodes_online': [],
+        'nodes_offline': [],
+        'nodes_pending': [],
+        'nodes_standby': [],
+        'nodes_maintenance': [],
+        'permissions_valid_all_nodes': 1,
+   }
+
+    cluster_data = _get_cluster_basics(msg, file_data, cluster_data)
+    cluster_data = _get_cluster_nodes(msg, file_data, cluster_data)
+    if cluster_data['stonith']['sbd']['found']:
+        cluster_data = _get_stonith_sbd(msg, file_data, cluster_data)
+    cluster_data = _get_cluster_nodes_state(msg, file_data, cluster_data)
     if cluster_data['cnt_nodes_configured'] != cluster_data['cnt_nodes_included']:
         cluster_data['permissions_valid_all_nodes'] = -1
-
 
     return cluster_data
 
