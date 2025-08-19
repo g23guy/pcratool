@@ -1,12 +1,12 @@
 #!/usr/bin/python3
-SVER = '0.0.2-dev.250818.2'
+SVER = '0.0.3-dev'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
 # Copyright (c) 2025 SUSE LLC
 #
 # Description:  Analyzes HB report archives for known issues
-# Modified:     2025 Aug 18
+# Modified:     2025 Aug 19
 #
 ##############################################################################
 #
@@ -65,14 +65,11 @@ def usage():
     print()
     print("OPTIONS")
     print(display.format('-h, --help', "Displays this screen"))
-    print(display.format('-a, --all_reports', "Set report --type all"))
     print(display.format('-b, --batch', "Batch mode that disables the progress bar"))
     print(display.format('-d, --debug', "Use log level 4"))
-    print(display.format('-j, --json', "Set report --type json"))
     print(display.format('-k, --keep', "Do not delete extracted directories"))
     print(display.format('-n, --normal', "Use log level 2, default log level: Minimal"))
-    print(display.format('-o <path>, --output <path>', "SCA Report file output directory"))
-    print(display.format('-p, --summary', "Print a pattern summary"))
+    print(display.format('-o <path>, --output <path>', "Report file output directory"))
     print(display.format('-q, --quiet', "Use log level 0"))
     print(display.format('-r, --remove', "Remove archive files leaving only the SCA Report file. Ignored in debug mode."))
     print(display.format('-t, --type', "SCA Report file output type, options: json, html, all. Default: html"))
@@ -91,6 +88,12 @@ def option_error(msg):
 def signal_handler(sig, frame):
     print("\n\nAborting...\n")
     sys.exit(1)
+
+def separate_entry(msg, count):
+    if count > 1:
+        msg.min()
+        msg.separator(msg.LOG_MIN, '=')
+        msg.min()
 
 def config_entry(_entry, trailer = ''):
     formatted_entry = _entry.strip('\"\'')
@@ -276,777 +279,6 @@ class DisplayMessages():
         if self.level >= required_level:
             print("{}".format(use_char*width))
 
-
-
-class SupportconfigAnalysis():
-    '''
-    Gathers information about the supportconfig. The information includes:
-        Server, SUSE distribution, targeted OS products installed, applicable patterns, applicable pattern results
-    '''
-    REQUIRED_ELEMENTS = ["META_CLASS", "META_CATEGORY", "META_COMPONENT", "PATTERN_ID", "PRIMARY_LINK", "OVERALL", "OVERALL_INFO", "META_LINK_"]
-    REQUIRED_JSON_KEYS = ['generation', 'class', 'category', 'component', 'id', 'primary_solution', 'severity', 'description', 'solution_links']
-    REQUIRED_ELEMENT_CONV = {
-    'META_CLASS': 'class', 
-    'META_CATEGORY': 'category', 
-    'META_COMPONENT': 'component', 
-    'PATTERN_ID': 'id', 
-    'PRIMARY_LINK': 'primary_solution', 
-    'OVERALL': 'severity', 
-    'OVERALL_INFO': 'description'
-    }
-    SEV_TABLE = {-2: 'temp', -1: 'partial', 0: 'success', 1: 'recommend', 2: 'promotion', 3: 'warning', 4: 'critical', 5: 'error', 6: 'ignore' }
-    GITHUB_OWNER = 'https://github.com/openSUSE/'
-
-    def __init__(self, msg, config, extracted_path):
-        self.msg = msg
-        self.config = config
-        self.json_data = {}
-        self.tool_library_path = config_entry(config.get("Common", "tool_library_path"), '/')
-        self.sca_patterns_path = config_entry(config.get("Common", "sca_pattern_path"), '/')
-        self.github_base = config_entry(config.get("Supportconfig", "github_base"), '/')
-        self.location = extracted_path
-        self.analysis_datetime = datetime.datetime.now()
-        self.distro_info = {'valid': True, 'serverName': 'Unknown', 'hardWare': 'Unknown', 'virtualization': 'None', 'Summary': '', 'timeArchiveRun': "0000-00-00 00:00:00", 'report': {}}
-        self.distro_info['timeAnalysis'] = str(self.analysis_datetime.year) + "-" + str(self.analysis_datetime.month).zfill(2) + "-" + str(self.analysis_datetime.day).zfill(2) + " " + str(self.analysis_datetime.hour).zfill(2) + ":" + str(self.analysis_datetime.minute).zfill(2) + ":" + str(self.analysis_datetime.second).zfill(2)
-
-        self.required_element_count = len(self.REQUIRED_ELEMENTS)
-        self.results = {}
-        self.supportconfig_keys = []
-        self.runtime_error_list = []
-        self.pattern_stats = {
-            'total': 0,
-            'applicable': 0,
-            'applied': 0,
-            'runtime_errors': 0,
-            self.SEV_TABLE[-2]: 0,
-            self.SEV_TABLE[-1]: 0,
-            self.SEV_TABLE[0]: 0,
-            self.SEV_TABLE[1]: 0,
-            self.SEV_TABLE[2]: 0,
-            self.SEV_TABLE[3]: 0,
-            self.SEV_TABLE[4]: 0,
-            self.SEV_TABLE[5]: 0,
-            self.SEV_TABLE[6]: 0,
-            'filter': []
-        }
-        self.products_list = self.__get_products_list()
-        if self.distro_info['valid']:
-            self.all_patterns = self.__get_available_patterns()
-            self.pattern_filtered_directories = self.__get_pattern_filtered_directories()
-            self.applicable_patterns = self.__get_applicable_patterns()
-            self.__apply_patterns()
-
-    # runpats gets the pattern results. runpats calls patternPreProcessor
-    # getHtml(htmlOutputFile, self.location, supportconfigPath.split("/")[-1])
-    # getHtml calls getClasses
-    # email the report file
-    # delete the archive and directory as needed
-
-
-    def __str__ (self):
-        pattern = '''
-Class instance of {}
-  location = {}
-  distro_info = {}\n
-'''
-        return pattern.format(self.__class__.__name__, self.location, self.distro_info)
-
-    def get_results(self):
-        return self.json_data
-
-    def is_valid(self):
-        return self.distro_info['valid']
-
-    def __get_pattern_source_url(self, pat):
-        # relative_pattern_path should start with 'patterns/'
-        relative_pattern_path = pat.replace(self.tool_library_path, '')
-        github_repo_name = ''
-        if '/ALP/' in relative_pattern_path:
-            if 'alp1' in relative_pattern_path:
-                github_repo_name = 'sca-patterns-alp1'
-        elif '/SLE/' in relative_pattern_path:
-            if 'sle16' in relative_pattern_path:
-                github_repo_name = 'sca-patterns-alp1'
-            elif 'sle15' in relative_pattern_path:
-                github_repo_name = 'sca-patterns-sle15'
-            elif 'sle12' in relative_pattern_path:
-                github_repo_name = 'sca-patterns-sle12'
-            elif 'sle11' in relative_pattern_path:
-                github_repo_name = 'sca-patterns-sle11'
-            elif 'sle10' in relative_pattern_path:
-                github_repo_name = 'sca-patterns-sle10'
-            elif 'sle9' in relative_pattern_path:
-                github_repo_name = 'sca-patterns-sle09'
-        elif '/HAE/' in relative_pattern_path:
-            github_repo_name = 'sca-patterns-hae'
-
-        if len(github_repo_name) > 0:
-            pattern_source_url = self.github_base  + github_repo_name + '/blob/master/' + relative_pattern_path
-        else:
-            pattern_source_url = self.github_base
-
-        return pattern_source_url
-        
-
-    def __parse_results_output(self, out, error, pat):
-        output = {}
-        error_display = "{} -- {}: {}"
-        output['valid'] = True
-        output['error_tag'] = 'None'
-        output['error_str'] = 'None'
-        output['output_str'] = str(out)
-        json_data = True
-
-        try:
-            json_object = json.loads(out)
-        except ValueError as e:
-            json_data = False
-
-        missing_json_keys = []
-        if json_data:
-            msg.debug("+ Processing JSON output data")
-            for key in self.REQUIRED_JSON_KEYS:
-                if not key in json_object:
-                    missing_json_keys.append(key)
-            if len(missing_json_keys) > 0:
-                output['valid'] = False
-                output['error_tag'] = 'Missing JSON keys'
-                output['error_str'] = ' '.join(missing_json_keys)
-                self.runtime_error_list.append(error_display.format(pat, output['error_tag'], output['error_str']))
-                self.pattern_stats['runtime_errors'] += 1
-            else:
-                dict1 = output
-                output = {**dict1, **json_object}
-                output['severity_str'] = self.SEV_TABLE[output['severity']]
-                self.pattern_stats[self.SEV_TABLE[output['severity']]] += 1
-                if output['severity'] >= 0 and output['severity'] < 5:
-                    self.pattern_stats['applied'] += 1
-            self.results[pat] = output
-        else:
-            msg.debug("Processing pipe separated output data")
-            output['generation'] = 1
-            output['solution_links'] = {}
-            if error == "":
-                pattern_return_list = out.strip().split("|")
-
-                if( len(pattern_return_list) < self.required_element_count ):
-                    output['valid'] = False
-                    output['error_tag'] = 'Insufficient output elements'
-                    output['error_str'] = "{} or more needed".format(self.required_element_count)
-                    self.runtime_error_list.append(error_display.format(pat, output['error_tag'], output['error_str']))
-                    self.pattern_stats['runtime_errors'] += 1
-                    self.results[pat] = output
-                    return False
-
-                missing_elements = []
-                for output_element in pattern_return_list:
-                    found = False
-                    for i in range(0, self.required_element_count):
-                        if output_element.startswith(self.REQUIRED_ELEMENTS[i]):
-                            found = True
-                    if not found:
-                        output['valid'] = False
-                        output['error_tag'] = 'Invalid output element'
-                        output['error_str'] = output_element
-                        self.runtime_error_list.append(error_display.format(pat, output['error_tag'], output['error_str']))
-                        self.pattern_stats['runtime_errors'] += 1
-                        self.results[pat] = output
-                        return False
-
-                for o in pattern_return_list:
-                    key, value = o.split("=", 1)
-                    if key.startswith('META_LINK_'):
-                        tag = key.replace('META_LINK_', '')
-                        output['solution_links'][tag] = value
-                    else:
-                        output[self.REQUIRED_ELEMENT_CONV[key]] = value
-                output['severity'] = int(output['severity'])
-                output['severity_str'] = self.SEV_TABLE[output['severity']]
-                output['primary_solution'] = output['primary_solution'].replace('META_LINK_', '')
-                self.pattern_stats[self.SEV_TABLE[output['severity']]] += 1
-                if output['severity'] >= 0 and output['severity'] < 5:
-                    self.pattern_stats['applied'] += 1
-                self.results[pat] = output
-            else:
-                output['valid'] = False
-                output['error_tag'] = 'Output error'
-                output['error_str'] = error
-                self.runtime_error_list.append(error_display.format(pat, output['error_tag'], output['error_str']))
-                self.pattern_stats['runtime_errors'] += 1
-                self.results[pat] = output
-
-        return output['valid']
-
-
-    def __apply_patterns(self):
-        pattern_count = 0
-        output = {}
-        self.pattern_stats['applicable'] = len(self.applicable_patterns)
-        verbose_line = '{0:6} {1:>5} of {2} {3}'
-        pattern_skipped = False
-
-        self.msg.min('Pattern Filter', ' '.join(self.pattern_stats['filter']))
-
-        if( msg.get_level() >= msg.LOG_VERBOSE ):
-            msg.verbose('Analyzing Supportconfig', 'In Progress')
-        elif( msg.get_level() >= msg.LOG_MIN ):
-            if progress_bar_active:
-                ascbar = ProgressBar("Analyzing Supportconfig:", self.pattern_stats['applicable'])
-            else:
-                msg.min('Analyzing Supportconfig', 'In Progress')
-
-        for test_pattern, generational_value in self.applicable_patterns.items():
-            pattern_count += 1
-            try:
-                if test_pattern.endswith("README"):
-                    pattern_skipped = True
-                else:
-                    if generational_value > 1:
-                        cmd = [test_pattern, self.location]
-                    elif generational_value == 1:
-                        cmd = [test_pattern, "-p", self.location]
-                    else:
-                        output['valid'] = False
-                        output['error_tag'] = 'Pattern error'
-                        output['error_str'] = 'Invalid pattern generational value: {}'.format(generational_value)
-                        self.results[test_pattern] = output
-                        self.results[test_pattern]['source'] = self.__get_pattern_source_url(test_pattern)
-                        self.runtime_error_list.append(test_pattern + "{0} -- {1}: {2}".format(test_pattern, output['error_tag'], output['error_str']))
-                        self.pattern_stats['runtime_errors'] += 1
-                        self.msg.verbose(verbose_line.format('ERROR:', pattern_count, self.pattern_stats['applicable'], self.runtime_error_list[-1]))
-                        continue
-
-                    self.msg.debug()
-                    self.msg.debug('Process Command', ' '.join(cmd))
-                    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                    out, error = p.communicate()
-                    pattern_is_valid = self.__parse_results_output(out, error, test_pattern)
-                    self.results[test_pattern]['source'] = self.__get_pattern_source_url(test_pattern)
-
-                #call parseOutput to see if output was expected
-                if( msg.get_level() >= msg.LOG_VERBOSE ):
-                    if pattern_skipped:
-                        self.msg.verbose(verbose_line.format('Skip:', pattern_count, self.pattern_stats['total'], test_pattern))
-                        pattern_skipped = False
-                    else:
-                        if pattern_is_valid:
-                            self.msg.debug("+ Output", self.results[test_pattern]['output_str'])
-                            self.msg.verbose(verbose_line.format('Done:', pattern_count, self.pattern_stats['applicable'], test_pattern))
-                        else:
-                            self.msg.debug("+ Output", self.results[test_pattern]['error_str'])
-                            self.msg.verbose(verbose_line.format('ERROR:', pattern_count, self.pattern_stats['applicable'], test_pattern + " - " + str(self.results[test_pattern]['error_tag'])))
-                elif( msg.get_level() >= msg.LOG_MIN ):
-                    if progress_bar_active:
-                        ascbar.inc_count()
-                        ascbar.update()
-            except Exception as e:
-                output['valid'] = False
-                output['error_tag'] = 'Runtime error'
-                output['error_str'] = str(e)
-                self.results[test_pattern] = output
-                self.results[test_pattern]['source'] = self.__get_pattern_source_url(test_pattern)
-                self.runtime_error_list.append(test_pattern + "{0} -- {1}: {2}".format(test_pattern, output['error_tag'], output['error_str']))
-                self.pattern_stats['runtime_errors'] += 1
-                self.msg.verbose(verbose_line.format('ERROR:', pattern_count, self.pattern_stats['applicable'], self.runtime_error_list[-1]))
-
-        #make output look nice
-        if( msg.get_level() > msg.LOG_QUIET and msg.get_level() <= msg.LOG_NORMAL ):
-            if progress_bar_active:
-                ascbar.finish()
-
-        self.msg.verbose()
-        self.msg.separator(msg.LOG_VERBOSE, '-')
-        self.msg.normal('Total Patterns', str(self.pattern_stats['total']))
-        self.msg.normal('Patterns Evaluated', str(self.pattern_stats['applicable']))
-        self.msg.normal('- Critical', str(self.pattern_stats['critical']))
-        self.msg.normal('- Warning', str(self.pattern_stats['warning']))
-        self.msg.normal('- Recommended', str(self.pattern_stats['recommend']))
-        self.msg.verbose('- Promotion', str(self.pattern_stats['promotion']))
-        self.msg.normal('- Success', str(self.pattern_stats['success']))
-        self.msg.verbose('- Error', str(self.pattern_stats['error']))
-        self.msg.verbose('- Ignore', str(self.pattern_stats['ignore']))
-        self.msg.verbose('- Partial', str(self.pattern_stats['partial']))
-        self.msg.verbose('- Temporary', str(self.pattern_stats['temp']))
-        self.msg.verbose('- Exec Errors', str(self.pattern_stats['runtime_errors']))
-        self.msg.min('Applicable to Server', str(self.pattern_stats['applied']))
-        level_now = msg.get_level()
-        if( level_now >= msg.LOG_MIN ):
-            if self.pattern_stats['runtime_errors'] > 0:
-                self.msg.min('Pattern Execution Errors:', str(self.pattern_stats['runtime_errors']))
-                self.msg.separator(self.msg.LOG_MIN, '-')
-                for pattern_error_str in self.runtime_error_list:
-                    print(pattern_error_str)
-                    print()
-        self.json_data['pattern_stats'] = self.pattern_stats
-        self.json_data['results'] = self.results
-
-    def __get_available_patterns(self):
-        file_list = []
-        for root, dirs, files in os.walk(self.sca_patterns_path):
-            for name in files:
-                if "README" in name:
-                    continue
-                else:
-                    file_list.append(os.path.join(root, name))
-        file_list.sort()
-        self.pattern_stats['total'] = len(file_list)
-        return file_list
-
-    def __get_pattern_filtered_directories(self):
-        pattern_directories = [self.sca_patterns_path + 'local/']
-        for product_included in self.products_list:
-            base_pattern_path = str(self.sca_patterns_path) + str(product_included['patternTag']) + "/"
-            pattern_filter_path = base_pattern_path + str(product_included['use_tag']) + str(product_included['use_vermajor']) + "all/"
-            if os.path.isdir(pattern_filter_path):
-                pattern_directories.append(pattern_filter_path)
-            pattern_filter_path = base_pattern_path + str(product_included['use_tag']) + str(product_included['use_vermajor']) + "sp" + str(product_included['use_verminor']) + "/"
-            if os.path.isdir(pattern_filter_path):
-                pattern_directories.append(pattern_filter_path)
-
-        pattern_directories = list(set(pattern_directories)) #create a unique sorted list
-        self.msg.debug('Pattern Filtered Directories', ' '.join(pattern_directories))
-        pattern_definition_filter = []
-        for test_directory in pattern_directories:
-            pattern_definition_filter.append(test_directory.split("/")[-2])
-        self.pattern_stats['filter'] = sorted(pattern_definition_filter)
-
-        return pattern_directories
-
-    def __get_applicable_patterns(self):
-        pattern_file_dict = {}
-        scapattern_gen1 = re.compile(r'^Core.init\(META_CLASS|^\@PATTERN_RESULTS = \(', re.IGNORECASE)
-        scapattern_gen2 = re.compile(r'SCAPatternGen2\(')
-        for check_pattern in self.all_patterns:
-            for filtered_directory in self.pattern_filtered_directories:
-                if filtered_directory in check_pattern:
-                    generational_value = -1
-                    with open(check_pattern) as f:
-                        for line in f:
-                            if scapattern_gen2.search(line):
-                                generational_value = 2
-                            elif scapattern_gen1.search(line):
-                                generational_value = 1
-                    pattern_file_dict[check_pattern] = generational_value
-        return pattern_file_dict
-
-    def __get_products_summary_simple(self, this_pattern_tag, this_tag, re_name, summary_file):
-        # Extracts product information in the summary.xml file from supportconfig
-        # Pattern directory simple SP format: patterns/<patternTag>/<tag><vermajor_variant>sp<verminor_variant>
-        re_start = re.compile(r'<product\s|<product>', re.IGNORECASE)
-        re_end = re.compile(r'</product>', re.IGNORECASE)
-        re_version = re.compile(r'<version>.*</version>', re.IGNORECASE)
-        these_products = []
-        in_product = False
-        summary_info = {
-            'patternTag': this_pattern_tag, # Used to filter patterns for analysis
-            'tag': this_tag,                # The product's identity tag
-            'vermajor_variant': '',         # The OS variant's major version
-            'verminor_variant': '',         # The OS variant's minor version
-            'vermajor_os': '',              # The OS's major version
-            'verminor_os': '',              # The OS's minor version
-            'use_tag': this_tag,            # The tag used to select patterns
-            'use_vermajor': '',             # The major version used to select patterns
-            'use_verminor': '',             # The minor version used to select patterns
-            'supportconfigKey': '',         # Identifies the current supportconfig product
-            'nameTag': 'Product:',          # HTML report's nameTag, name pair
-            'name': '',                     # HTML report's nameTag, name pair 
-            'versionTag': 'Version:',       # HTML report's versionTag, version pair
-            'version': '',                  # HTML report's versionTag, version pair
-            }
-        for line in summary_file:
-            if( in_product ):
-                if re_end.search(line):
-                    in_product = False
-                elif re_name.search(line):
-                    try:
-                        summary_info['name'] = re.search(r'>(.+?)<', line).group(1).replace('-', ' ')
-                    except:
-                        True
-                elif re_version.search(line):
-                    try:
-                        summary_info['version'] = re.search(r'>(.+?)<', line).group(1)
-                        if( "." in summary_info['version'] ):
-                            (summary_info['vermajor_variant'], summary_info['verminor_variant']) = summary_info['version'].split(".")
-                        else:
-                            summary_info['vermajor_variant'] = summary_info['version']
-                            summary_info['verminor_variant'] = "0"
-                    except:
-                        True
-                if( summary_info['name'] and summary_info['version'] ):
-                    in_product = False
-                    summary_info['use_vermajor'] = summary_info['vermajor_variant']
-                    summary_info['use_verminor'] = summary_info['verminor_variant']
-                    summary_info['supportconfigKey'] = str(summary_info['tag']) + str(summary_info['vermajor_variant']) + "sp" + str(summary_info['verminor_variant'])
-                    self.supportconfig_keys.append(summary_info['supportconfigKey'])
-                    these_products.append(summary_info)
-                    break
-            elif re_start.search(line):
-                in_product = True
-        return these_products
-
-    def __get_products_summary_flat(self, this_pattern_tag, this_tag, use_this_tag, re_name, summary_file):
-        # Extracts product information in the summary.xml file from supportconfig
-        # Pattern directory flat format: patterns/<patternTag>/<use_tag><vermajor_variant><verminor_variant>
-        # Support
-        re_start = re.compile(r'<product\s|<product>', re.IGNORECASE)
-        re_end = re.compile(r'</product>', re.IGNORECASE)
-        re_version = re.compile(r'<version>.*</version>', re.IGNORECASE)
-        these_products = []
-        in_product = False
-        summary_info = {
-            'patternTag': this_pattern_tag, # Used to filter patterns for analysis
-            'tag': this_tag,                # The product's identity tag
-            'vermajor_variant': '',         # The OS variant's major version
-            'verminor_variant': '',         # The OS variant's minor version
-            'vermajor_os': '',              # The OS's major version
-            'verminor_os': '',              # The OS's minor version
-            'use_tag': use_this_tag,        # The tag used to select patterns
-            'use_vermajor': '',             # The major version used to select patterns
-            'use_verminor': '',             # The minor version used to select patterns
-            'supportconfigKey': '',         # Identifies the current supportconfig product
-            'nameTag': 'Product:',          # HTML report's nameTag, name pair
-            'name': '',                     # HTML report's nameTag, name pair 
-            'versionTag': 'Version:',       # HTML report's versionTag, version pair
-            'version': '',                  # HTML report's versionTag, version pair
-            }
-        for line in summary_file:
-            if( in_product ):
-                if re_end.search(line):
-                    in_product = False
-                elif re_name.search(line):
-                    try:
-                        summary_info['name'] = re.search(r'>(.+?)<', line).group(1).replace('-', ' ')
-                    except:
-                        True
-                elif re_version.search(line):
-                    try:
-                        summary_info['version'] = re.search(r'>(.+?)<', line).group(1)
-                        if( "." in summary_info['version'] ):
-                            (summary_info['vermajor_variant'], summary_info['verminor_variant']) = summary_info['version'].split(".")
-                        else:
-                            summary_info['vermajor_variant'] = summary_info['version']
-                            summary_info['verminor_variant'] = "0"
-                    except:
-                        True
-                if( summary_info['name'] and summary_info['version'] ):
-                    in_product = False
-                    summary_info['use_vermajor'] = summary_info['vermajor_variant']
-                    summary_info['use_verminor'] = summary_info['verminor_variant']
-                    summary_info['supportconfigKey'] = str(summary_info['tag']) + str(summary_info['vermajor_variant']) + str(summary_info['verminor_variant'])
-                    self.supportconfig_keys.append(summary_info['supportconfigKey'])
-                    these_products.append(summary_info)
-                    break
-            elif re_start.search(line):
-                in_product = True
-        return these_products
-
-    def __get_products_list(self):
-        check_hardware = re.compile(r'unknown|hardware.txt', re.IGNORECASE)
-        products_found = []
-
-        #load summary.xml
-        try:
-            with open(self.location + "/summary.xml") as f:
-                summary_file = f.read().splitlines()
-                f.close()
-        except:
-            summary_file = []
-
-        #detect SLE for VMWARE
-        product_name = re.compile(r'<summary>SUSE Linux Enterprise Server .* for VMware</summary>', re.IGNORECASE)
-        product_list = self.__get_products_summary_simple('VMware', 'vmw', product_name, summary_file)
-        products_found = products_found + product_list
-
-        #detect SLE for SAP
-        product_name = re.compile(r'<summary>SUSE LINUX Enterprise Server for SAP Applications.*</summary>', re.IGNORECASE)
-        product_list = self.__get_products_summary_simple('SAP', 'sap', product_name, summary_file)
-        products_found = products_found + product_list
-
-        #get HAE information
-        product_name = re.compile(r'<summary>SUSE Linux Enterprise High Availability Extension.*</summary>', re.IGNORECASE)
-        product_list = self.__get_products_summary_simple('HAE', 'hae', product_name, summary_file)
-        products_found = products_found + product_list
-
-        #get SUSE Manager Server information
-        product_name = re.compile(r'<summary>SUSE Manager Server.*</summary>', re.IGNORECASE)
-        product_list = self.__get_products_summary_flat('suma', 'sumasrv', 'suma', product_name, summary_file)
-        products_found = products_found + product_list
-        
-        #get SUSE Manager Retail Branch Server information
-        product_name = re.compile(r'<summary>SUSE Manager Retail Branch Server.*</summary>', re.IGNORECASE)
-        product_list = self.__get_products_summary_flat('suma', 'sumarbs', 'suma', product_name, summary_file)
-        products_found = products_found + product_list
-        
-        # email_to DO
-        del summary_file
-
-
-        #load basic-environment.txt
-        try:
-            with open(self.location + "/basic-environment.txt") as f:
-                basic_env_file = f.read().splitlines()
-                f.close()
-        except:
-            basic_env_file = []
-
-        product_info = {
-            'patternTag': 'Unknown',        # Used to filter patterns for analysis, format: patterns/<patternTag>/<use_tag><use_vermajor>sp<use_verminor>
-            'tag': 'Unknown',               # The product's identity tag
-            'vermajor_variant': '',         # The OS variant's major version
-            'verminor_variant': '',         # The OS variant's minor version
-            'vermajor_os': '',              # The OS's major version
-            'verminor_os': '',              # The OS's minor version
-            'use_tag': 'Unknown',           # The tag used to select patterns
-            'use_vermajor': '',             # The major version used to select patterns
-            'use_verminor': '',             # The minor version used to select patterns
-            'supportconfigKey': '',         # Identifies the current supportconfig product
-            'nameTag': 'Distribution:',     # HTML report's nameTag, name pair
-            'name': '',                     # HTML report's nameTag, name pair 
-            'versionTag': 'Service Pack:',  # HTML report's versionTag, version pair
-            'version': '',                  # HTML report's versionTag, version pair
-            }
-
-        #read basic-environment line by line to pull out data.
-        in_date = False
-        in_uname = False
-        in_os_release = False
-        in_suse_release = False
-        for line in basic_env_file:
-            if "Script Version:" in line:
-                self.distro_info['supportconfigVersion'] = line.split(':')[-1].strip()
-            elif line.startswith("Hardware:"):
-                self.distro_info['hardWare'] = line.split(":")[1].strip()
-            elif line.startswith("Hypervisor:"):
-                self.distro_info['virtualization'] = line.split(":")[1].strip()
-            elif line.startswith("Identity:"):
-                self.distro_info['vmIdentity'] = line.split(":")[1].strip()
-            elif "/bin/date" in line:
-                in_date = True
-            elif "/bin/uname -a" in line:
-                in_uname = True
-            elif "/etc/os-release" in line:
-                in_os_release = True
-            elif( in_date ):
-                if "#==[" in line:
-                    in_date = False
-                else:
-                    dateLine = line
-                    dateLine = re.sub(r"\s+", " ", dateLine.rstrip("\n")) # replace multiple whitespace with single space
-                    tmp_date = dateLine.split() # split into list based on a space
-                    if( len(tmp_date) >= 4 ):
-                        tmpMonth = tmp_date[1].strip()
-                        if "Jan" in tmpMonth:
-                            tmpMonth = "01"
-                        elif "Feb" in tmpMonth:
-                            tmpMonth = "02"
-                        elif "Mar" in tmpMonth:
-                            tmpMonth = "03"
-                        elif "Apr" in tmpMonth:
-                            tmpMonth = "04"
-                        elif "May" in tmpMonth:
-                            tmpMonth = "05"
-                        elif "Jun" in tmpMonth:
-                            tmpMonth = "06"
-                        elif "Jul" in tmpMonth:
-                            tmpMonth = "07"
-                        elif "Aug" in tmpMonth:
-                            tmpMonth = "08"
-                        elif "Sep" in tmpMonth:
-                            tmpMonth = "09"
-                        elif "Oct" in tmpMonth:
-                            tmpMonth = "10"
-                        elif "Nov" in tmpMonth:
-                            tmpMonth = "11"
-                        elif "Dec" in tmpMonth:
-                            tmpMonth = "12"
-                        self.distro_info['timeArchiveRun'] = tmp_date[-1].strip() + "-" + tmpMonth + "-" + tmp_date[2].strip().zfill(2) + " " + tmp_date[3].strip()
-                        in_date = False
-            elif( in_uname ):
-                if "#==[" in line:
-                    in_uname = False
-                else:
-                    tmp_uname = line.split()
-                    if( len(tmp_uname) >= 3 ):
-                        self.distro_info['kernelVersion'] = tmp_uname[2].strip()
-                        self.distro_info['serverName'] = tmp_uname[1].strip()
-                        self.distro_info['osArch'] = tmp_uname[-2].strip()
-                        in_uname = False
-            elif( in_os_release ):
-                if "#==[" in line:
-                    in_os_release = False
-                    product_info['name'] = str(self.distro_info['Summary']) + " (" + self.distro_info['osArch'] + ")"
-                else:
-                    if line.lower().startswith("variant"):
-                        tmp_variant_name = line.lower()
-                        if "enterprise server" in tmp_variant_name:
-                            product_info['tag'] = 'sle'
-                            product_info['use_tag'] = product_info['tag']
-                            product_info['patternTag'] = 'SLE'
-                        elif "micro" in tmp_variant_name:
-                            product_info['tag'] = 'slem'
-                            product_info['use_tag'] = 'sle'
-                            product_info['patternTag'] = 'SLE'
-                            tmp_ver = line.lower().replace('"', '').strip().split()[-1]
-                            product_info['vermajor_variant'] = tmp_ver.split('.')[0]
-                            product_info['verminor_variant'] = tmp_ver.split('.')[1]
-                    elif line.lower().startswith("pretty_name"):
-                        self.distro_info['Summary'] = line.split('=')[-1].replace('"', '').strip()
-                        tmp_pretty_name = line.lower()
-                        if "suse linux enterprise micro" in tmp_pretty_name:
-                            product_info['tag'] = 'slem'
-                            product_info['use_tag'] = 'sle'
-                            product_info['patternTag'] = 'SLE'
-                        elif "suse linux micro" in tmp_pretty_name:
-                            product_info['tag'] = 'slem'
-                            product_info['use_tag'] = 'sle'
-                            product_info['patternTag'] = 'SLE'
-                        elif "suse linux enterprise high performance computing" in tmp_pretty_name:
-                            product_info['tag'] = 'hpc'
-                            product_info['use_tag'] = 'sle'
-                            product_info['patternTag'] = 'SLE'
-                        elif "suse linux enterprise" in tmp_pretty_name:
-                            product_info['tag'] = 'sle'
-                            product_info['use_tag'] = product_info['tag']
-                            product_info['patternTag'] = 'SLE'
-                        elif "opensuse leap" in tmp_pretty_name:
-                            product_info['tag'] = 'sle'
-                            product_info['use_tag'] = product_info['tag']
-                            product_info['patternTag'] = 'SLE'
-                    elif line.lower().startswith("version_id"):
-                        version_id = line.replace('"', "").strip().split('=')[1].split('.')
-                        product_info['vermajor_os'] = str(version_id[0])
-                        if( len(version_id) > 1 ):
-                            product_info['verminor_os'] = str(version_id[1])
-                        else:
-                            product_info['verminor_os'] = "0"
-                        product_info['version'] = product_info['verminor_os']
-
-        # Look for SUSE release as a last resort
-        if( len(self.distro_info['Summary']) == 0 ):
-            for line in basic_env_file:
-                if "/etc/SuSE-release" in line:
-                    in_suse_release = True
-                elif( in_suse_release ):
-                    if "#==[" in line:
-                        in_suse_release = False
-                        product_info['name'] = str(self.distro_info['Summary'])
-                    else:
-                        if( len(self.distro_info['Summary']) > 0 ):
-                            if line.lower().startswith("version"):
-                                product_info['vermajor_os'] = line.split('=')[-1].replace('"', '').strip()
-                            elif line.lower().startswith("patchlevel"):
-                                product_info['verminor_os'] = line.split('=')[-1].replace('"', '').strip()
-                            product_info['version'] = product_info['verminor_os']
-                        else:
-                            self.distro_info['Summary'] = line.strip()
-
-
-        if check_hardware.search(self.distro_info['hardWare']):
-            try:
-                with open(self.location + "/hardware.txt", errors="ignore") as f:
-                    hardware_file = f.read().splitlines()
-                    f.close()
-            except Exception as e:
-                print("+Error: Cannot read {} file - {}".format(self.location + "/hardware.txt", str(e)))
-                hardware_file = []
-
-            model_name = ''
-            for line in hardware_file:
-                if line.startswith('Model name:      '):
-                    model_name = line.split()[2]
-                    if 'power' in model_name.lower():
-                        self.distro_info['hardWare'] = model_name
-                    break
-
-        if( len(product_info['vermajor_variant']) < 1 ):
-            product_info['vermajor_variant'] = product_info['vermajor_os']
-        if( len(product_info['verminor_variant']) < 1 ):
-            product_info['verminor_variant'] = product_info['verminor_os']
-
-        if( product_info['tag'] == 'Unknown' ):
-            self.distro_info['valid'] = False
-            msg.debug("Distro Evaluation", self.distro_info)
-            msg.debug("Product Evaluation", product_info)
-            msg.min(" Error: Unknown OS", product_info['name'])
-            return
-        else:
-            if( product_info['tag'] ==  'slem' ):
-                if( int(product_info['vermajor_os']) >= 16 ):
-                    product_info['use_vermajor'] = product_info['vermajor_os']
-                    product_info['use_verminor'] = product_info['verminor_os']
-                    product_info['nameTag'] = 'Product:'
-                    product_info['versionTag'] = 'Version:'
-                    product_info['version'] = str(product_info['vermajor_variant']) + "." + str(product_info['verminor_variant'])
-                    product_info['supportconfigKey'] = str(product_info['tag']) + str(product_info['vermajor_variant']) + str(product_info['verminor_variant'])
-                elif( int(product_info['vermajor_os']) == 6 ):
-                    product_info['vermajor_os'] = "15"
-                    product_info['verminor_os'] = str(int(product_info['verminor_variant']) + 6)
-                    product_info['use_vermajor'] = product_info['vermajor_os']
-                    product_info['use_verminor'] = product_info['verminor_os']
-                    product_info['nameTag'] = 'Product:'
-                    product_info['versionTag'] = 'Version:'
-                    product_info['version'] = str(product_info['vermajor_variant']) + "." + str(product_info['verminor_variant'])
-                    product_info['supportconfigKey'] = str(product_info['tag']) + str(product_info['vermajor_variant']) + str(product_info['verminor_variant'])
-                else:
-                    product_info['use_vermajor'] = "1" + str(product_info['vermajor_variant'])
-                    product_info['use_verminor'] = product_info['verminor_variant']
-                    product_info['nameTag'] = 'Product:'
-                    product_info['versionTag'] = 'Version:'
-                    product_info['version'] = str(product_info['vermajor_variant']) + "." + str(product_info['verminor_variant'])
-                    product_info['supportconfigKey'] = str(product_info['tag']) + str(product_info['vermajor_variant']) + str(product_info['verminor_variant'])
-            else:
-                product_info['use_vermajor'] = product_info['vermajor_variant']
-                product_info['use_verminor'] = product_info['verminor_variant']
-                product_info['supportconfigKey'] = str(product_info['tag']) + str(product_info['vermajor_variant']) + "sp" + str(product_info['verminor_variant'])
-
-        self.supportconfig_keys.append(product_info['supportconfigKey'])
-        products_found.append(product_info)
-
-        del basic_env_file
-
-        self.msg.min('Supportconfig Products', ' '.join(self.supportconfig_keys))
-
-        self.distro_info['name'] = os.path.basename(self.location)
-        self.distro_info['path'] = os.path.dirname(self.location)
-        self.json_data['sc_info'] = self.distro_info
-        self.json_data['prod_info'] = products_found
-        self.msg.debug('Distro Info', self.distro_info)
-        self.msg.debug('Products Found', products_found)
-
-        return products_found
-
-def show_pattern_library(msg, location):
-    total_count=0
-    directory = {}
-    file_list = []
-    display = '{0:>17} : {1}'
-    msg.min("Pattern Library Summary\n")
-    msg.min(display.format('Pattern Directory', 'Count'))
-    msg.min(display.format('=================', '====='))
-    for root, dirs, files in os.walk(location):
-        file_list = []
-        for name in files:
-            if "README" in name:
-                continue
-            else:
-                file_list.append(os.path.join(root, name))
-        if len(file_list) > 0:
-            file_list.sort()
-            directory[root] = file_list
-            total_count += len(file_list)
-
-    for _dir, _list in sorted(directory.items()):
-        if( msg.get_level() >= msg.LOG_NORMAL ):
-            msg.min(display.format(_dir, len(_list)))
-            for _pat in _list:
-                msg.normal(_pat)
-        elif( msg.get_level() >= msg.LOG_MIN ):
-            msg.min(display.format(os.path.basename(_dir), len(_list)))
-        msg.normal()
-
-    msg.quiet(display.format(total_count, 'Total Available Patterns'))
-    msg.min()
-
 def valid_supportconfig_dir(msg, given_path):
     TEST_FILES = ['description.txt', 'ha-log.txt']
     if not os.access(given_path, os.R_OK | os.X_OK):
@@ -1095,103 +327,19 @@ def i_am_root():
         return False
     return True
 
-class SCAReport():
-    REQUIRED_ELEMENTS = ["META_CLASS", "META_CATEGORY", "META_COMPONENT", "PATTERN_ID", "PRIMARY_LINK", "OVERALL", "OVERALL_INFO", "META_LINK_"]
-    SEV_TABLE = {'-2': 'temp', '-1': 'partial', '0': 'success', '1': 'recommend', '2': 'promotion', '3': 'warning', '4': 'critical', '5': 'error', '6': 'ignore' }
-    VALID_REPORT_TYPES = ['json', 'all']
-    default_report_type = 'json'
-    # REMOVE GITHUB_OWNER when source url is added to results.pattern info
-    GITHUB_OWNER = 'https://github.com/openSUSE/'
+def clean_up(msg, data):
+    if data['source_data']['valid']:
+        if data['source_data']['remove_directory']:
+            try:
+                shutil.rmtree(data['source_data']['dirpath_data_source'])
+            except:
+                True
 
-    def __init__(self, msg, config):
-        self.msg = msg
-        self.config = config
-        self.data = {}
-        self.report_type = config_entry(config.get("Common", "report_output_type")).lower()
-        self.report_path = config_entry(config.get("Common", "report_output_path"), '/')
-        self.report_name = ''
-        self.report_file = ''
-        self.email_list = ''
-        self.meta_class_names = []
-        self.content = ''
-        self.__validate_report_type()
-
-    def __str__ (self):
-        pattern = '''
-Class instance of {}
-  report_type      = {}
-  report_path      = {}
-  report_name      = {}
-  report_file      = {}
-  email_list       = {}
-  meta_class_names = {}
-'''
-        return pattern.format(self.__class__.__name__, self.report_type, self.report_path, self.report_name, self.report_file, self.email_list, self.meta_class_names)
-
-    def __validate_report_type(self):
-        valid = False
-        for checking_type in self.VALID_REPORT_TYPES:
-            if self.report_type == checking_type:
-                valid = True
-        if not valid:
-            msg.min("\nWarning: Invalid report type - {}, using instance default ({})".format(self.report_type,self.default_report_type))
-            self.report_type = self.default_report_type
-
-    def __normalize_path(self, check_path):
-        if check_path.endswith("/"):
-            return check_path
-        else:
-            return check_path + "/"
-
-    def set_type(self, updated_type):
-        self.report_type = updated_type.lower()
-        self.__validate_report_type()
-
-    def set_path(self, updated_path):
-        if os.path.exists(updated_path):
-            self.report_path = self.__normalize_path(updated_path)
-        else:
-            msg.min("\nError: Path not found - {}, using default path".format(updated_path))
-
-    def set_data(self, updated_data):
-        self.data = updated_data
-        if len(self.report_path) < 1:
-            self.report_path = self.__normalize_path(self.data['sc_info']['path'])
-        self.__set_report_type(self.report_type)
-
-    def generate_report(self):
-        '''Generate an HTML SCA Report'''
-        if self.data['pattern_stats']['runtime_errors'] > 0:
-            self.msg.separator(self.msg.LOG_MIN, '-')
-
-        self.msg.normal("SCA Report Type", self.report_type)
-        if self.report_type == "html":
-            self.__generate_html_report()
-        elif self.report_type == "json":
-            self.__generate_json_report()
-        elif self.report_type == "all":
-            self.__set_report_type('html')
-            self.__generate_html_report()
-            self.__set_report_type('json')
-            self.__generate_json_report()
-
-    def __set_report_type(self, this_type):
-        if not this_type == 'all':
-            self.report_type = this_type
-            self.report_name = self.data['sc_info']['name'] + "_report." + self.report_type
-            self.report_file = self.report_path + self.report_name
-            self.data['sc_info']['report'][self.report_type] = self.report_file
-
-    def __generate_json_report(self):
-        self.msg.verbose("+ Building JSON report", "Saving File")
-        try:
-            with open(self.report_file, "w") as f:
-                json.dump(self.data, f, indent = 4)
-        except Exception as e:
-            self.msg.min("Error: Cannot write {} file - {}".format(self.report_type, str(e)))
-            self.msg.min()
-            sys.exit(13)
-        self.msg.min("SCA Report File", self.report_file)
+        if data['source_data']['remove_tarball']:
+            try:
+                os.remove(data['source_data']['path'])
+            except:
+                True
 
 def evaluate_given_path(msg, given_path):
     given_results = {
@@ -1238,30 +386,104 @@ def evaluate_given_path(msg, given_path):
     msg.debug("Evaluate Path", given_results)
     return given_results
 
+def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path_config):
+    path_data = {}
+
+    if extract_path_cmd:
+        path_data = evaluate_given_path(msg, extract_path_cmd)
+        msg.verbose("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
+        if path_data['exists']:
+            if path_data['tail_write']:
+                path_data['dirpath_extract_here'] = path_data['path']
+                path_data['extract_here_for_reports'] = True
+                msg.normal("Extraction Directory Change", "From command line: {0}".format(path_data['path']))
+            else:
+                msg.min("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
+                msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(path_data['path']))
+                msg.min(" * Suggestion", "Fix the -x, --dirpath_extract_here directory\n")
+                sys.exit(2)
+        else:
+            msg.min("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
+            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
+            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the -x, --dirpath_extract_here directory\n".format(path_data['given_path']))
+            sys.exit(2)
+    elif extract_path_config:
+        path_data = evaluate_given_path(msg, extract_path_config)
+        msg.verbose("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
+        if path_data['exists']:
+            if path_data['tail_write']:
+                path_data['dirpath_extract_here'] = path_data['path']
+                path_data['extract_here_for_reports'] = True
+                msg.normal("Extraction Directory Change", "From config file: {0}".format(path_data['path']))
+            else:
+                msg.min("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
+                msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(path_data['path']))
+                msg.min(" * Suggestion", "Fix the extract_path in {0}\n".format(config_file))
+                sys.exit(2)
+        else:
+            msg.min("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
+            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
+            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the extract_path in {1}\n".format(path_data['given_path'], config_file))
+            sys.exit(2)
+
+    return path_data
+
+def check_report_path_given(msg, config_file, report_path_cmd, report_path_config):
+    path_data = {}
+
+    if report_path_cmd:
+        path_data = evaluate_given_path(msg, report_path_cmd)
+        msg.verbose("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
+        if path_data['exists']:
+            if path_data['tail_write']:
+                msg.normal("SCA Report Directory Change", "From command line: {0}".format(path_data['path']))
+            else:
+                msg.min("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
+                msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(path_data['path']))
+                msg.min(" * Suggestion", "Fix the -o, --output directory\n")
+                sys.exit(3)
+        else:
+            msg.min("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
+            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
+            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the -o, --output directory\n".format(path_data['given_path']))
+            sys.exit(3)
+    elif report_path_config:
+        path_data = evaluate_given_path(msg, report_path_config)
+        msg.verbose("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
+        if path_data['exists']:
+            if path_data['tail_write']:
+                msg.normal("SCA Report Directory Change", "From config file: {0}".format(path_data['path']))
+            else:
+                msg.min("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
+                msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(path_data['path']))
+                msg.min(" * Suggestion", "Fix the report_output_path in {0}\n".format(config_file))
+                sys.exit(3)
+        else:
+            msg.min("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
+            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
+            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the report_output_path in {1}\n".format(path_data['given_path'], config_file))
+            sys.exit(3)
+
+    return path_data
+
 def get_cluster_data(msg, file_data):
     cluster_data = {
         'nodes': {},
-    }
-# for each cluster node directory, use: subfolders = [ f.path for f in os.scandir(folder) if f.is_dir() ]
-#   permissions.txt
-#   sysinfo.txt
-#   on first running node
-#       members.txt
-#       crm_mon.txt
-# analysis.txt
-# description.txt
-#
-# /hb_report-20230823-1722 one stopped node
-
-    cluster_data['cnt_nodes_configured'] = -1
-    cluster_data['cnt_nodes_included'] = 0
-    cluster_data['cnt_resources_configured'] = -1
-    cluster_data['has_quorum'] = False
-    cluster_data['nodes_online'] = []
-    cluster_data['nodes_offline'] = []
-    cluster_data['nodes_maintenance'] = []
-    cluster_data['permissions_valid_all_nodes'] = 1
-    cluster_data['stonith']= {'sbd': {'found': False, 'config': {}}}
+        'stonith': {
+            'sbd': {
+                'found': False,
+                'config': {},
+            },
+        },
+        'cnt_nodes_configured': -1,
+        'cnt_nodes_included': 0,
+        'cnt_resources_configured': -1,
+        'has_quorum': False,
+        'nodes_online': [],
+        'nodes_offline': [],
+        'nodes_maintenance': [],
+        'permissions_valid_all_nodes': 1,
+   }
 
     ##### description.txt
     filename = "description.txt"
@@ -1633,109 +855,6 @@ def get_cluster_data(msg, file_data):
 
     return cluster_data
 
-def check_extraction_path_given(msg, config_file, extract_path_cmd, extract_path_config):
-    path_data = {}
-
-    if extract_path_cmd:
-        path_data = evaluate_given_path(msg, extract_path_cmd)
-        msg.verbose("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
-        if path_data['exists']:
-            if path_data['tail_write']:
-                path_data['dirpath_extract_here'] = path_data['path']
-                path_data['extract_here_for_reports'] = True
-                msg.normal("Extraction Directory Change", "From command line: {0}".format(path_data['path']))
-            else:
-                msg.min("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
-                msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(path_data['path']))
-                msg.min(" * Suggestion", "Fix the -x, --dirpath_extract_here directory\n")
-                sys.exit(2)
-        else:
-            msg.min("Extraction Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
-            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
-            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the -x, --dirpath_extract_here directory\n".format(path_data['given_path']))
-            sys.exit(2)
-    elif extract_path_config:
-        path_data = evaluate_given_path(msg, extract_path_config)
-        msg.verbose("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
-        if path_data['exists']:
-            if path_data['tail_write']:
-                path_data['dirpath_extract_here'] = path_data['path']
-                path_data['extract_here_for_reports'] = True
-                msg.normal("Extraction Directory Change", "From config file: {0}".format(path_data['path']))
-            else:
-                msg.min("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
-                msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(path_data['path']))
-                msg.min(" * Suggestion", "Fix the extract_path in {0}\n".format(config_file))
-                sys.exit(2)
-        else:
-            msg.min("Extraction Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
-            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
-            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the extract_path in {1}\n".format(path_data['given_path'], config_file))
-            sys.exit(2)
-
-    return path_data
-
-def check_report_path_given(msg, config_file, report_path_cmd, report_path_config):
-    path_data = {}
-
-    if report_path_cmd:
-        path_data = evaluate_given_path(msg, report_path_cmd)
-        msg.verbose("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
-        if path_data['exists']:
-            if path_data['tail_write']:
-                msg.normal("SCA Report Directory Change", "From command line: {0}".format(path_data['path']))
-            else:
-                msg.min("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
-                msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(path_data['path']))
-                msg.min(" * Suggestion", "Fix the -o, --output directory\n")
-                sys.exit(3)
-        else:
-            msg.min("SCA Report Directory", "Evaluating path given on command line: {0}".format(path_data['given_path']))
-            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
-            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the -o, --output directory\n".format(path_data['given_path']))
-            sys.exit(3)
-    elif report_path_config:
-        path_data = evaluate_given_path(msg, report_path_config)
-        msg.verbose("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
-        if path_data['exists']:
-            if path_data['tail_write']:
-                msg.normal("SCA Report Directory Change", "From config file: {0}".format(path_data['path']))
-            else:
-                msg.min("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
-                msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(path_data['path']))
-                msg.min(" * Suggestion", "Fix the report_output_path in {0}\n".format(config_file))
-                sys.exit(3)
-        else:
-            msg.min("SCA Report Directory", "Evaluating path given in the config file: {0}".format(path_data['given_path']))
-            msg.min(" Error", "Directory not found - {0}".format(path_data['given_path']))
-            msg.min(" * Suggestion", "Try mkdir -p {0} or fix the report_output_path in {1}\n".format(path_data['given_path'], config_file))
-            sys.exit(3)
-
-    return path_data
-
-def separate_entry(msg, count):
-    if count > 1:
-        msg.min()
-        msg.separator(msg.LOG_MIN, '=')
-        msg.min()
-
-def analyze_supportconfig_directory(msg, config, report, data, email):
-    dict1 = {}
-    dict2 = {}
-
-    sca_data = SupportconfigAnalysis(msg, config, data['dirpath_data_source'])
-    if sca_data.is_valid():
-        dict1['file_data'] = data
-        dict2 = sca_data.get_results()
-        sca_results = {**dict1, **dict2}
-        report.set_data(sca_results)
-        if len(email) > 0:
-            report.email_report(email)
-        else:
-            report.generate_report()
-        if( msg.get_level() < msg.LOG_DEBUG ):
-            report.clean_up()
-
 def analyze_cluster(msg, data):
 #    print()
 #    pprint.pprint(data, indent=4)
@@ -1755,20 +874,6 @@ def analyze_cluster(msg, data):
         msg.min()
         sys.exit(13)
     msg.min("Cluster Report Data File", report_file)
-
-def clean_up(msg, data):
-    if data['source_data']['valid']:
-        if data['source_data']['remove_directory']:
-            try:
-                shutil.rmtree(data['source_data']['dirpath_data_source'])
-            except:
-                True
-
-        if data['source_data']['remove_tarball']:
-            try:
-                os.remove(data['source_data']['path'])
-            except:
-                True
 
 
 ##############################################################################
@@ -1812,7 +917,7 @@ def main(argv):
     os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path + 'python')
 
     try:
-        (optlist, args) = getopt.gnu_getopt(argv[1:], "habdjkno:pl:qrt:vx:", ["help", "all_reports", "batch", "debug", "json", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "type=", "verbose", "dirpath_extract_here="])
+        (optlist, args) = getopt.gnu_getopt(argv[1:], "hbdkno:pl:qrvx:", ["help", "batch", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "verbose", "dirpath_extract_here="])
     except getopt.GetoptError as exc:
         title()
         print("Error:", exc, file=sys.stderr)
@@ -1824,29 +929,19 @@ def main(argv):
             title()
             usage()
             sys.exit(0)
-        elif opt in {"-a", "--all_reports"}:
-            given_type = "all"
         elif opt in {"-b", "--batch"}:
             progress_bar_active = False
         elif opt in {"-d", "--debug"}:
             msg.set_level(msg.LOG_DEBUG)
             remove_extracted_directory = False
-        elif opt in {"-e", "--email"}:
-            email_addr_str = arg
-        elif opt in {"-j", "--json"}:
-            given_type = "json"
         elif opt in {"-k", "--keep"}:
             remove_extracted_directory = False
         elif opt in {"-n", "--normal"}:
             msg.set_level(msg.LOG_NORMAL)
         elif opt in {"-o", "--output"}:
             given_report_output_path = arg
-        elif opt in {"-p", "--summary"}:
-            pattern_library = True
         elif opt in {"-r", "--remove"}:
             remove_archive = True
-        elif opt in {"-t", "--type"}:
-            given_type = arg
         elif opt in {"-q", "--quiet"}:
             msg.set_level(msg.LOG_QUIET)
         elif opt in {"-v", "--verbose"}:
@@ -1894,9 +989,6 @@ def main(argv):
                     if valid_supportconfig_dir(msg, this_file_data['path']):
                         this_file_data['valid'] = True
                         this_file_data['dirpath_data_source'] = this_file_data['path']
-                        sca_report = SCAReport(msg, config)
-                        if given_type:
-                            sca_report.set_type(given_type)
                         if preconfigured_report_path:
                             this_file_data['dirpath_reports'] = preconfigured_report_path['path']
                         else:
@@ -1943,9 +1035,6 @@ def main(argv):
                         this_file_data['dirpath_embedded'] = supportconfig_dir
                         this_file_data['dirpath_data_source'] = this_file_data['dirpath_embedded']
 
-                        sca_report = SCAReport(msg, config)
-                        if given_type:
-                            sca_report.set_type(given_type)
                         if preconfigured_report_path:
                             this_file_data['dirpath_reports'] = preconfigured_report_path['path']
                         else:
