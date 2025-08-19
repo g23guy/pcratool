@@ -1603,13 +1603,14 @@ def get_cluster_data(msg, file_data):
                         else:
                             cluster_data['stonith']['sbd']['config'][key.strip()] = value.strip().strip('"').strip("'")
                                 
-        msg.debug("Calculating SBD status per node")
+        msg.debug("Calculating SBD status")
+        cluster_data['stonith']['sbd']['all_clear'] = True
         for node_name in cluster_data['stonith']['sbd']['nodes'].keys():
             cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = True
             for status in cluster_data['stonith']['sbd']['nodes'][node_name]['slots']:
                 if 'clear' not in status:
                     cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = False
-
+                    cluster_data['stonith']['sbd']['all_clear'] = False
 
 
     msg.debug("Calculating is_dc, nodes_maintenance, is_running, permissions_valid_all_nodes")
