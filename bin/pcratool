@@ -762,6 +762,12 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                         if entry[0] not in cluster_data['nodes_maintenance']:
                             msg.debug("> nodes_maintenance list, appended {}".format(entry[0]))
                             cluster_data['nodes_maintenance'].append(entry[0])
+                if "UNCLEAN" in line:
+                    entry = re.findall(r"Node (.*?): UNCLEAN", line)
+                    if entry:
+                        if entry[0] not in cluster_data['nodes_unclean']:
+                            msg.debug("> nodes_unclean list, appended {}".format(entry[0]))
+                            cluster_data['nodes_unclean'].append(entry[0])
                 if "standby" in line:
                     entry = re.findall(r"Node (.*?): standby", line)
                     if entry:
@@ -818,7 +824,7 @@ def _get_stonith_sbd(msg, file_data, cluster_data):
                         cluster_data['stonith']['sbd']['nodes'] = {}
                     if server not in cluster_data['stonith']['sbd']['nodes']:
                         cluster_data['stonith']['sbd']['nodes'][server] = {'slots': []}
-                    cluster_data['stonith']['sbd']['nodes'][server]['slots'].append(status)
+                    cluster_data['stonith']['sbd']['nodes'][server]['slots'].append(entry)
 
         ##### sbd
         filename = "sbd"
@@ -893,6 +899,7 @@ def get_cluster_data(msg, file_data):
         'cluster_maintenance': False,
         'nodes_online': [],
         'nodes_offline': [],
+        'nodes_unclean': [],
         'nodes_pending': [],
         'nodes_standby': [],
         'nodes_maintenance': [],
