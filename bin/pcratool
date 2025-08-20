@@ -558,7 +558,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
         file_dc = node_data_source + "/DC"
         file_running = node_data_source + "/RUNNING"
         if os.path.exists(file_dc):
-            msg.debug("> found file DC node {}".format(node_name))
+            msg.debug(">", "Added DC node {} from {}".format(node_name, "directory"))
             cluster_data['nodes'][node_name]['is_dc_local'] = True
         else:
             cluster_data['nodes'][node_name]['is_dc_local'] = False
@@ -682,6 +682,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
         filename = "crm_mon.txt"
         msg.debug("_get_cluster_nodes: File", filename)
         filepath = node_data_source + "/" + filename
+        stop_early = False
         try:
             with open(filepath) as f:
                 filedata = f.read().splitlines()
@@ -697,7 +698,13 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                 line = line.strip()
                 if line.startswith('* '):
                     line = line[2:]
-                    
+
+                if line.startswith('##'):
+                    if stop_early:
+                        break
+                    else:
+                        stop_early = True
+                        continue
                 if "Resource management is DISABLED" in line:
                     msg.debug(">", "found cluster maintenance status")
                     cluster_data['cluster_maintenance'] = True
@@ -710,7 +717,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                         msg.debug(">", "Added {} from {}".format(dc_node_name, filename))
                         cluster_data['nodes'][dc_node_name] = {}
                         cluster_data['nodes'][dc_node_name]['is_included'] = False
-                    msg.debug(">", "Current DC node found - {}".format(dc_node_name))
+                    msg.debug(">", "Added DC node {} from {}".format(node_name, filename))
                     cluster_data['nodes'][dc_node_name]['is_dc_crm'] = True
                 if " nodes configured" in line:
                     msg.debug(">", "cnt_nodes_configured")
@@ -730,11 +737,11 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                 if "Online: [" in line:
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_online'] = entry[0].strip().split()
-                    msg.debug(">", "nodes_online list, added {}".format(cluster_data['nodes_online']))
+                    msg.debug("> nodes_online", "added {}".format(cluster_data['nodes_online']))
                 if "OFFLINE: [" in line:
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_offline'] = entry[0].strip().split()
-                    msg.debug(">", "nodes_offline list, added {}".format(cluster_data['nodes_online']))
+                    msg.debug("> nodes_offline", "added {}".format(cluster_data['nodes_offline']))
                 if "maintenance" in line:
                     entry = re.findall(r"Node (.*?): maintenance", line)
                     if entry:
@@ -800,7 +807,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
     msg.debug("_get_cluster_nodes:", "Find missing nodes from lists")
     for state in node_states:
         check_nodes = "nodes_" + state
-        msg.debug(">", "{}, cluster_data[nodes] {}".format(check_nodes, cluster_data['nodes'].keys()))
+        msg.debug("> {}".format(check_nodes), "cluster_data[nodes] {}".format(cluster_data['nodes'].keys()))
         for member_node in cluster_data[check_nodes]:
             if member_node not in cluster_data['nodes']:
                 msg.debug(">", "Added {} from {}".format(member_node, check_nodes))
