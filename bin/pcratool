@@ -716,6 +716,10 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                 line = line.strip()
                 if line.startswith('* '):
                     line = line[2:]
+                    
+                if "Resource management is DISABLED" in line:
+                    msg.debug("> found cluster maintenance status")
+                    cluster_data['cluster_maintenance'] = True
                 if "partition with quorum" in line:
                     msg.debug("> found quorum status")
                     cluster_data['has_quorum'] = True
@@ -874,6 +878,7 @@ def get_cluster_data(msg, file_data):
         'cnt_nodes_included': 0,
         'cnt_resources_configured': -1,
         'has_quorum': False,
+        'cluster_maintenance': False,
         'nodes_online': [],
         'nodes_offline': [],
         'nodes_pending': [],
