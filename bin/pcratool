@@ -884,7 +884,10 @@ def _get_cluster_nodes_state(msg, file_data, cluster_data):
         if node_name in cluster_data['nodes_maintenance']:
             cluster_data['nodes'][node_name]['is_maintenance'] = True
         else:
-            cluster_data['nodes'][node_name]['is_maintenance'] = False
+            if cluster_data['cluster_maintenance']:
+                cluster_data['nodes'][node_name]['is_maintenance'] = True
+            else:
+                cluster_data['nodes'][node_name]['is_maintenance'] = False
 
         if 'is_running' not in cluster_data['nodes'][node_name]:
             if node_name in cluster_data['nodes_online']:
