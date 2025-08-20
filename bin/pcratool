@@ -675,28 +675,6 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                             cluster_data['nodes'][node_name]['os_version_major'] = ''
                             cluster_data['nodes'][node_name]['os_version_minor'] = ''
 
-        ##### members.txt
-        filename = "members.txt"
-        msg.debug("_get_cluster_nodes: File", filename)
-        filepath = node_data_source + "/" + filename
-        try:
-            with open(filepath) as f:
-                filedata = f.read().splitlines()
-                f.close()
-        except Exception as e:
-            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.verbose()
-            filedata = ''
-
-        if filedata:
-            node_list = []
-            for line in filedata:
-                node_list = line.split()
-            for member_node in node_list:
-                if member_node not in cluster_data['nodes']:
-                    msg.debug("> _get_cluster_nodes: Added node - {}".format(member_node))
-                    cluster_data['nodes'][member_node] = {}
-
         ##### crm_mon.txt
         filename = "crm_mon.txt"
         msg.debug("_get_cluster_nodes: File", filename)
@@ -792,6 +770,37 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                                 cluster_data['stonith'][_type] = {}
                                 cluster_data['stonith'][_type]['found'] = True
                         msg.debug("> stonith:{} found".format(_type))
+
+        ##### members.txt
+        filename = "members.txt"
+        msg.debug("_get_cluster_nodes: File", filename)
+        filepath = node_data_source + "/" + filename
+        try:
+            with open(filepath) as f:
+                filedata = f.read().splitlines()
+                f.close()
+        except Exception as e:
+            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.verbose()
+            filedata = ''
+
+        if filedata:
+            node_list = []
+            for line in filedata:
+                node_list = line.split()
+            for member_node in node_list:
+                if member_node not in cluster_data['nodes']:
+                    msg.debug("> _get_cluster_nodes: Added node from members.txt - {}".format(member_node))
+                    cluster_data['nodes'][member_node] = {}
+
+    # find missing nodes excluded from members.txt
+    node_states = ['unclean', 'standby', 'pending', 'maintenance', 'offline']
+    for state in node_states:
+        check_nodes = "nodes_" + state
+        for member_node in cluster_data[check_nodes]:
+            if member_node not in cluster_data['nodes']:
+                msg.debug("_get_cluster_nodes: Added node from {} list - {}".format(check_nodes, member_node))
+                cluster_data['nodes'][member_node] = {}
 
     return cluster_data
 
