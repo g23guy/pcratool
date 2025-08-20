@@ -757,11 +757,23 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                     entry = re.findall(r"\[(.*?)\]", line)
                     cluster_data['nodes_offline'] = entry[0].strip().split()
                 if "maintenance" in line:
-                    msg.debug("> nodes_maintenance list")
                     entry = re.findall(r"Node (.*?): maintenance", line)
                     if entry:
                         if entry[0] not in cluster_data['nodes_maintenance']:
+                            msg.debug("> nodes_maintenance list, appended {}".format(entry[0]))
                             cluster_data['nodes_maintenance'].append(entry[0])
+                if "standby" in line:
+                    entry = re.findall(r"Node (.*?): standby", line)
+                    if entry:
+                        if entry[0] not in cluster_data['nodes_standby']:
+                            msg.debug("> nodes_standby list, appended {}".format(entry[0]))
+                            cluster_data['nodes_standby'].append(entry[0])
+                if "pending" in line:
+                    entry = re.findall(r"Node (.*?): pending", line)
+                    if entry:
+                        if entry[0] not in cluster_data['nodes_pending']:
+                            msg.debug("> nodes_pending list, appended {}".format(entry[0]))
+                            cluster_data['nodes_pending'].append(entry[0])
                 if "stonith:" in line:
                     if "stonith:external/sbd" in line:
                         cluster_data['stonith']['sbd']['found'] = True
