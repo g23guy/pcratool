@@ -688,8 +688,8 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                 filedata = f.read().splitlines()
                 f.close()
         except Exception as e:
-            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.verbose()
+            msg.min(" Error: Cannot open {} file - {}".format(filename, str(e)))
+            msg.min()
             filedata = ''
 
         if filedata:
