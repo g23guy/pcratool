@@ -864,12 +864,28 @@ def _get_stonith_sbd(msg, file_data, cluster_data):
     return cluster_data
 
 def _get_cluster_nodes_state(msg, file_data, cluster_data):
-    msg.debug("_get_cluster_nodes_state: determining nodes_maintenance")
+    msg.debug("_get_cluster_nodes_state: determining node states from nodes lists")
     for node_name in cluster_data['nodes'].keys():
+        if node_name in cluster_data['nodes_unclean']:
+            cluster_data['nodes'][node_name]['is_unclean'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_unclean'] = False
+
+        if node_name in cluster_data['nodes_pending']:
+            cluster_data['nodes'][node_name]['is_pending'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_pending'] = False
+
+        if node_name in cluster_data['nodes_standby']:
+            cluster_data['nodes'][node_name]['is_standby'] = True
+        else:
+            cluster_data['nodes'][node_name]['is_standby'] = False
+
         if node_name in cluster_data['nodes_maintenance']:
             cluster_data['nodes'][node_name]['is_maintenance'] = True
         else:
             cluster_data['nodes'][node_name]['is_maintenance'] = False
+
         if 'is_running' not in cluster_data['nodes'][node_name]:
             if node_name in cluster_data['nodes_online']:
                 msg.debug("> found in nodes_online: {}".format(node_name))
