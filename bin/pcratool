@@ -556,9 +556,9 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
         file_running = node_data_source + "/RUNNING"
         if os.path.exists(file_dc):
             msg.debug("> found file DC node {}".format(node_name))
-            cluster_data['nodes'][node_name]['is_dc'] = True
+            cluster_data['nodes'][node_name]['is_dc_local'] = True
         else:
-            cluster_data['nodes'][node_name]['is_dc'] = False
+            cluster_data['nodes'][node_name]['is_dc_local'] = False
 
         if os.path.exists(file_running):
             cluster_data['nodes'][node_name]['is_running'] = True
@@ -706,11 +706,13 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                     msg.debug("> found crm_mon DC node {}".format(dc_node_name))
                     if dc_node_name not in cluster_data['nodes']:
                         cluster_data['nodes'][dc_node_name] = {}
-                    if 'is_dc' in cluster_data['nodes'][dc_node_name]:
-                        if not cluster_data['nodes'][dc_node_name]['is_dc']:
+                    if 'is_dc_local' in cluster_data['nodes'][dc_node_name]:
+                        if not cluster_data['nodes'][dc_node_name]['is_dc_local']:
+                            cluster_data['nodes'][dc_node_name]['is_dc_crm'] = True
+                        else:
                             cluster_data['nodes'][dc_node_name]['is_dc_crm'] = True
                     else:
-                        cluster_data['nodes'][dc_node_name]['is_dc'] = True
+                        cluster_data['nodes'][dc_node_name]['is_dc_local'] = True
                 if " nodes configured" in line:
                     msg.debug("> cnt_nodes_configured")
                     value = line.split()[0]
@@ -905,9 +907,13 @@ def _get_cluster_nodes_state(msg, file_data, cluster_data):
             else:
                 cluster_data['nodes'][node_name]['is_running'] = False
 
-        if 'is_dc' not in cluster_data['nodes'][node_name]:
-            msg.debug("> No DC found for {}".format(node_name))
-            cluster_data['nodes'][node_name]['is_dc'] = False
+        if 'is_dc_local' not in cluster_data['nodes'][node_name]:
+            msg.debug("> No DC file found for {}".format(node_name))
+            cluster_data['nodes'][node_name]['is_dc_local'] = False
+
+        if 'is_dc_crm' not in cluster_data['nodes'][node_name]:
+            msg.debug("> No Current DC found for {} in crm_mon.txt".format(node_name))
+            cluster_data['nodes'][node_name]['is_dc_crm'] = False
 
     return cluster_data
 
