@@ -476,8 +476,7 @@ def _get_cluster_basics(msg, file_data, cluster_data):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-        msg.verbose()
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ''
 
     if filedata:
@@ -498,8 +497,10 @@ def _get_cluster_basics(msg, file_data, cluster_data):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-        msg.verbose()
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        cluster_data['data_complete'] = False
+        msg.min(" WARNING: Cluster data incomplete, no {} file found.".format(filename))
+        msg.min("          All cluster_data[insync_*] values are wrong.")
         filedata = ''
 
     if filedata:
@@ -541,7 +542,253 @@ def _get_cluster_basics(msg, file_data, cluster_data):
 
     return cluster_data
 
+def _parse_permissions_txt(msg, dirpath, node_name, cluster_data):
+    ##### permissions.txt
+    filename = "permissions.txt"
+    filepath = dirpath + "/" + filename
+    msg.debug("_get_cluster_nodes: File", filename)
+
+    msg.debug("> evaluate", "permissions_valid")
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        cluster_data['nodes'][node_name]['permissions_valid'] = None
+        filedata = ''
+
+    if filedata:
+        cluster_data['nodes'][node_name]['permissions_valid'] = True
+        for line in filedata:
+            if "OK" not in line:
+                cluster_data['nodes'][node_name]['permissions_valid'] = False
+                cluster_data['permissions_valid_all_nodes'] = 0
+
+    return cluster_data
+
+def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data):
+    ##### sysinfo.txt
+    filename = "sysinfo.txt"
+    filepath = dirpath + "/" + filename
+    msg.debug("_get_cluster_nodes: File", filename)
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    tmp_dist_list = []
+    if filedata:
+        msg.debug(">", "pkg versions and summary info")
+        for line in filedata:
+            line = line.lstrip()
+            if line.startswith("CRM Version: "):
+                cluster_data['nodes'][node_name]['crm'] = line.split()[2]
+
+            if line.startswith("corosync "):
+                cluster_data['nodes'][node_name]['corosync'] = line.split()[1]
+                tmp_dist_list = line.split()
+                del tmp_dist_list[-1]
+                del tmp_dist_list[0:3]
+            elif re.search(r"^corosync-[0-9]", line):
+                tmp_ver1 = line.split('-', 1)[1]
+                tmp_ver2 = tmp_ver1.split('.')
+                del tmp_ver2[-1]
+                tmp_ver1 = '.'.join(tmp_ver2)
+                cluster_data['nodes'][node_name]['corosync'] = tmp_ver1
+
+            if line.startswith("pacemaker "):
+                cluster_data['nodes'][node_name]['pacemaker'] = line.split()[1]
+            elif re.search(r"^pacemaker-[0-9]", line):
+                tmp_ver1 = line.split('-', 1)[1]
+                tmp_ver2 = tmp_ver1.split('.')
+                del tmp_ver2[-1]
+                tmp_ver1 = '.'.join(tmp_ver2)
+                cluster_data['nodes'][node_name]['pacemaker'] = tmp_ver1
+
+            if line.startswith("resource-agents "):
+                cluster_data['nodes'][node_name]['resource-agents'] = line.split()[1]
+            elif re.search(r"^resource-agents-[0-9]", line):
+                tmp_ver1 = line.split('-', 2)[2]
+                tmp_ver2 = tmp_ver1.split('.')
+                del tmp_ver2[-1]
+                tmp_ver1 = '.'.join(tmp_ver2)
+                cluster_data['nodes'][node_name]['resource-agents'] = tmp_ver1
+
+            if line.startswith("sbd "):
+                cluster_data['nodes'][node_name]['sbd'] = line.split()[1]
+            elif re.search(r"^sbd-[0-9]", line):
+                tmp_ver1 = line.split('-', 1)[1]
+                tmp_ver2 = tmp_ver1.split('.')
+                del tmp_ver2[-1]
+                tmp_ver1 = '.'.join(tmp_ver2)
+                cluster_data['nodes'][node_name]['sbd'] = tmp_ver1
+
+            if line.startswith("Platform: "):
+                cluster_data['nodes'][node_name]['platform'] = line.split()[-1]
+            if line.startswith("Kernel release: "):
+                cluster_data['nodes'][node_name]['kernel'] = line.split()[-1]
+            if line.startswith("Architecture: "):
+                cluster_data['nodes'][node_name]['arch'] = line.split()[-1]
+            if line.startswith("Distribution: "):
+                dist = line.split(' ', 1)[1]
+                if "SUSE Linux Enterprise" in dist:
+                    last_word = dist.split()[-1]
+                    if "SP" in last_word:
+                        cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-2]
+                        cluster_data['nodes'][node_name]['os_version_minor'] = last_word.replace("SP", '')
+                        cluster_data['nodes'][node_name]['distribution'] = dist
+                    else:
+                        cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-1]
+                        cluster_data['nodes'][node_name]['os_version_minor'] = "0"
+                        cluster_data['nodes'][node_name]['distribution'] = dist
+                else:
+                    if tmp_dist_list:
+                        cluster_data['nodes'][node_name]['distribution'] = " ".join(tmp_dist_list)
+                        cluster_data['nodes'][node_name]['os_version_major'] = tmp_dist_list[-1]
+                        cluster_data['nodes'][node_name]['os_version_minor'] = ''
+                    else:
+                        cluster_data['nodes'][node_name]['distribution'] = ''
+                        cluster_data['nodes'][node_name]['os_version_major'] = ''
+                        cluster_data['nodes'][node_name]['os_version_minor'] = ''
+
+
+    return cluster_data
+
+def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
+    ##### crm_mon.txt
+    filename = "crm_mon.txt"
+    filepath = dirpath + "/" + filename
+    msg.debug("_get_cluster_nodes: File", filename)
+    stop_early = False
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    if filedata:
+        found_crm_mon = True
+        for line in filedata:
+            line = line.strip()
+            if line.startswith('* '):
+                line = line[2:]
+
+            if line.startswith('##'):
+                if stop_early:
+                    break
+                else:
+                    stop_early = True
+                    continue
+            if "Resource management is DISABLED" in line:
+                msg.debug(">", "found cluster maintenance status")
+                cluster_data['cluster_maintenance'] = True
+            if "partition with quorum" in line:
+                msg.debug(">", "found quorum status")
+                cluster_data['has_quorum'] = True
+            if "Current DC" in line:
+                dc_node_name = line.split()[2]
+                if dc_node_name not in cluster_data['nodes']:
+                    msg.debug(">", "Added {} from {}".format(dc_node_name, filename))
+                    cluster_data['nodes'][dc_node_name] = {}
+                    cluster_data['nodes'][dc_node_name]['is_included'] = False
+                msg.debug(">", "Added DC node {} from {}".format(node_name, filename))
+                cluster_data['nodes'][dc_node_name]['is_dc_crm'] = True
+            if " nodes configured" in line:
+                msg.debug(">", "cnt_nodes_configured")
+                value = line.split()[0]
+                if value.isdigit():
+                    cluster_data['cnt_nodes_configured'] = int(value)
+            if " resource instances configured" in line:
+                msg.debug(">", "cnt_resources_configured")
+                value = line.split()[0]
+                if value.isdigit():
+                    cluster_data['cnt_resources_configured'] = int(value)
+            if " resources configured" in line:
+                msg.debug(">", "cnt_resources_configured")
+                value = line.split()[0]
+                if value.isdigit():
+                    cluster_data['cnt_resources_configured'] = int(value)
+            if "Online: [" in line:
+                entry = re.findall(r"\[(.*?)\]", line)
+                cluster_data['nodes_online'] = entry[0].strip().split()
+                msg.debug("> nodes_online", "added {}".format(cluster_data['nodes_online']))
+            if "OFFLINE: [" in line:
+                entry = re.findall(r"\[(.*?)\]", line)
+                cluster_data['nodes_offline'] = entry[0].strip().split()
+                msg.debug("> nodes_offline", "added {}".format(cluster_data['nodes_offline']))
+            if "maintenance" in line:
+                entry = re.findall(r"Node (.*?): maintenance", line)
+                if entry:
+                    if entry[0] not in cluster_data['nodes_maintenance']:
+                        msg.debug(">", "nodes_maintenance list, appended {}".format(entry[0]))
+                        cluster_data['nodes_maintenance'].append(entry[0])
+            if "UNCLEAN" in line:
+                entry = re.findall(r"Node (.*?): UNCLEAN", line)
+                if entry:
+                    if entry[0] not in cluster_data['nodes_unclean']:
+                        msg.debug(">", "nodes_unclean list, appended {}".format(entry[0]))
+                        cluster_data['nodes_unclean'].append(entry[0])
+            if "standby" in line:
+                entry = re.findall(r"Node (.*?): standby", line)
+                if entry:
+                    if entry[0] not in cluster_data['nodes_standby']:
+                        msg.debug(">", "nodes_standby list, appended {}".format(entry[0]))
+                        cluster_data['nodes_standby'].append(entry[0])
+            if "pending" in line:
+                entry = re.findall(r"Node (.*?): pending", line)
+                if entry:
+                    if entry[0] not in cluster_data['nodes_pending']:
+                        msg.debug(">", "nodes_pending list, appended {}".format(entry[0]))
+                        cluster_data['nodes_pending'].append(entry[0])
+            if "stonith:" in line:
+                if "stonith:external/sbd" in line:
+                    cluster_data['stonith']['sbd']['found'] = True
+                    msg.debug(">", "stonith:external/sbd found")
+                else:
+                    entry = re.findall(r"\(stonith:(.*)\):", line)
+                    if entry:
+                        _type = entry[0]
+                        if _type not in cluster_data['stonith']:
+                            cluster_data['stonith'][_type] = {}
+                            cluster_data['stonith'][_type]['found'] = True
+                    msg.debug(">", "stonith:{} found".format(_type))
+
+
+    return [cluster_data, found_crm_mon]
+
+def _parse_members_txt(msg, dirpath, cluster_data):
+    ##### members.txt
+    filename = "members.txt"
+    filepath = dirpath + "/" + filename
+    msg.debug("_get_cluster_nodes: File", filename)
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    if filedata:
+        node_list = []
+        for line in filedata:
+            node_list = line.split()
+        for node_name in node_list:
+            if node_name not in cluster_data['nodes']:
+                msg.debug(">", "Added {} from {}".format(node_name, filename))
+                cluster_data['nodes'][node_name] = {}
+                cluster_data['nodes'][node_name]['is_included'] = False
+
+    return cluster_data
+
 def _get_cluster_nodes(msg, file_data, cluster_data):
+    found_crm_mon = False
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         msg.verbose("Processing cluster info", node_data_source)
@@ -554,7 +801,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
         cluster_data['cnt_nodes_included'] += 1
         cluster_data['nodes'][node_name]['is_included'] = True
 
-        ##### DC and RUNNINIG files
+        ##### DC and RUNNING files
         file_dc = node_data_source + "/DC"
         file_running = node_data_source + "/RUNNING"
         if os.path.exists(file_dc):
@@ -568,239 +815,10 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
         else:
             cluster_data['nodes'][node_name]['is_running'] = False
 
-        ##### permissions.txt
-        filename = "permissions.txt"
-        msg.debug("_get_cluster_nodes: File", filename)
-        filepath = node_data_source + "/" + filename
-        msg.debug("> evaluate", "permissions_valid")
-        try:
-            with open(filepath) as f:
-                filedata = f.read().splitlines()
-                f.close()
-        except Exception as e:
-            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.verbose()
-            cluster_data['nodes'][node_name]['permissions_valid'] = None
-            filedata = ''
-
-        if filedata:
-            cluster_data['nodes'][node_name]['permissions_valid'] = True
-            for line in filedata:
-                if "OK" not in line:
-                    cluster_data['nodes'][node_name]['permissions_valid'] = False
-                    cluster_data['permissions_valid_all_nodes'] = 0
-
-        ##### sysinfo.txt
-        filename = "sysinfo.txt"
-        msg.debug("_get_cluster_nodes: File", filename)
-        filepath = node_data_source + "/" + filename
-        try:
-            with open(filepath) as f:
-                filedata = f.read().splitlines()
-                f.close()
-        except Exception as e:
-            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.verbose()
-            filedata = ''
-
-        tmp_dist_list = []
-        if filedata:
-            msg.debug(">", "pkg versions and summary info")
-            for line in filedata:
-                line = line.lstrip()
-                if line.startswith("CRM Version: "):
-                    cluster_data['nodes'][node_name]['crm'] = line.split()[2]
-
-                if line.startswith("corosync "):
-                    cluster_data['nodes'][node_name]['corosync'] = line.split()[1]
-                    tmp_dist_list = line.split()
-                    del tmp_dist_list[-1]
-                    del tmp_dist_list[0:3]
-                elif re.search(r"^corosync-[0-9]", line):
-                    tmp_ver1 = line.split('-', 1)[1]
-                    tmp_ver2 = tmp_ver1.split('.')
-                    del tmp_ver2[-1]
-                    tmp_ver1 = '.'.join(tmp_ver2)
-                    cluster_data['nodes'][node_name]['corosync'] = tmp_ver1
-
-                if line.startswith("pacemaker "):
-                    cluster_data['nodes'][node_name]['pacemaker'] = line.split()[1]
-                elif re.search(r"^pacemaker-[0-9]", line):
-                    tmp_ver1 = line.split('-', 1)[1]
-                    tmp_ver2 = tmp_ver1.split('.')
-                    del tmp_ver2[-1]
-                    tmp_ver1 = '.'.join(tmp_ver2)
-                    cluster_data['nodes'][node_name]['pacemaker'] = tmp_ver1
-
-                if line.startswith("resource-agents "):
-                    cluster_data['nodes'][node_name]['resource-agents'] = line.split()[1]
-                elif re.search(r"^resource-agents-[0-9]", line):
-                    tmp_ver1 = line.split('-', 2)[2]
-                    tmp_ver2 = tmp_ver1.split('.')
-                    del tmp_ver2[-1]
-                    tmp_ver1 = '.'.join(tmp_ver2)
-                    cluster_data['nodes'][node_name]['resource-agents'] = tmp_ver1
-
-                if line.startswith("sbd "):
-                    cluster_data['nodes'][node_name]['sbd'] = line.split()[1]
-                elif re.search(r"^sbd-[0-9]", line):
-                    tmp_ver1 = line.split('-', 1)[1]
-                    tmp_ver2 = tmp_ver1.split('.')
-                    del tmp_ver2[-1]
-                    tmp_ver1 = '.'.join(tmp_ver2)
-                    cluster_data['nodes'][node_name]['sbd'] = tmp_ver1
-
-                if line.startswith("Platform: "):
-                    cluster_data['nodes'][node_name]['platform'] = line.split()[-1]
-                if line.startswith("Kernel release: "):
-                    cluster_data['nodes'][node_name]['kernel'] = line.split()[-1]
-                if line.startswith("Architecture: "):
-                    cluster_data['nodes'][node_name]['arch'] = line.split()[-1]
-                if line.startswith("Distribution: "):
-                    dist = line.split(' ', 1)[1]
-                    if "SUSE Linux Enterprise" in dist:
-                        last_word = dist.split()[-1]
-                        if "SP" in last_word:
-                            cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-2]
-                            cluster_data['nodes'][node_name]['os_version_minor'] = last_word.replace("SP", '')
-                            cluster_data['nodes'][node_name]['distribution'] = dist
-                        else:
-                            cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-1]
-                            cluster_data['nodes'][node_name]['os_version_minor'] = "0"
-                            cluster_data['nodes'][node_name]['distribution'] = dist
-                    else:
-                        if tmp_dist_list:
-                            cluster_data['nodes'][node_name]['distribution'] = " ".join(tmp_dist_list)
-                            cluster_data['nodes'][node_name]['os_version_major'] = tmp_dist_list[-1]
-                            cluster_data['nodes'][node_name]['os_version_minor'] = ''
-                        else:
-                            cluster_data['nodes'][node_name]['distribution'] = ''
-                            cluster_data['nodes'][node_name]['os_version_major'] = ''
-                            cluster_data['nodes'][node_name]['os_version_minor'] = ''
-
-        ##### crm_mon.txt
-        filename = "crm_mon.txt"
-        msg.debug("_get_cluster_nodes: File", filename)
-        filepath = node_data_source + "/" + filename
-        stop_early = False
-        try:
-            with open(filepath) as f:
-                filedata = f.read().splitlines()
-                f.close()
-        except Exception as e:
-            msg.min(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.min()
-            filedata = ''
-
-        if filedata:
-            node_list = []
-            for line in filedata:
-                line = line.strip()
-                if line.startswith('* '):
-                    line = line[2:]
-
-                if line.startswith('##'):
-                    if stop_early:
-                        break
-                    else:
-                        stop_early = True
-                        continue
-                if "Resource management is DISABLED" in line:
-                    msg.debug(">", "found cluster maintenance status")
-                    cluster_data['cluster_maintenance'] = True
-                if "partition with quorum" in line:
-                    msg.debug(">", "found quorum status")
-                    cluster_data['has_quorum'] = True
-                if "Current DC" in line:
-                    dc_node_name = line.split()[2]
-                    if dc_node_name not in cluster_data['nodes']:
-                        msg.debug(">", "Added {} from {}".format(dc_node_name, filename))
-                        cluster_data['nodes'][dc_node_name] = {}
-                        cluster_data['nodes'][dc_node_name]['is_included'] = False
-                    msg.debug(">", "Added DC node {} from {}".format(node_name, filename))
-                    cluster_data['nodes'][dc_node_name]['is_dc_crm'] = True
-                if " nodes configured" in line:
-                    msg.debug(">", "cnt_nodes_configured")
-                    value = line.split()[0]
-                    if value.isdigit():
-                        cluster_data['cnt_nodes_configured'] = int(value)
-                if " resource instances configured" in line:
-                    msg.debug(">", "cnt_resources_configured")
-                    value = line.split()[0]
-                    if value.isdigit():
-                        cluster_data['cnt_resources_configured'] = int(value)
-                if " resources configured" in line:
-                    msg.debug(">", "cnt_resources_configured")
-                    value = line.split()[0]
-                    if value.isdigit():
-                        cluster_data['cnt_resources_configured'] = int(value)
-                if "Online: [" in line:
-                    entry = re.findall(r"\[(.*?)\]", line)
-                    cluster_data['nodes_online'] = entry[0].strip().split()
-                    msg.debug("> nodes_online", "added {}".format(cluster_data['nodes_online']))
-                if "OFFLINE: [" in line:
-                    entry = re.findall(r"\[(.*?)\]", line)
-                    cluster_data['nodes_offline'] = entry[0].strip().split()
-                    msg.debug("> nodes_offline", "added {}".format(cluster_data['nodes_offline']))
-                if "maintenance" in line:
-                    entry = re.findall(r"Node (.*?): maintenance", line)
-                    if entry:
-                        if entry[0] not in cluster_data['nodes_maintenance']:
-                            msg.debug(">", "nodes_maintenance list, appended {}".format(entry[0]))
-                            cluster_data['nodes_maintenance'].append(entry[0])
-                if "UNCLEAN" in line:
-                    entry = re.findall(r"Node (.*?): UNCLEAN", line)
-                    if entry:
-                        if entry[0] not in cluster_data['nodes_unclean']:
-                            msg.debug(">", "nodes_unclean list, appended {}".format(entry[0]))
-                            cluster_data['nodes_unclean'].append(entry[0])
-                if "standby" in line:
-                    entry = re.findall(r"Node (.*?): standby", line)
-                    if entry:
-                        if entry[0] not in cluster_data['nodes_standby']:
-                            msg.debug(">", "nodes_standby list, appended {}".format(entry[0]))
-                            cluster_data['nodes_standby'].append(entry[0])
-                if "pending" in line:
-                    entry = re.findall(r"Node (.*?): pending", line)
-                    if entry:
-                        if entry[0] not in cluster_data['nodes_pending']:
-                            msg.debug(">", "nodes_pending list, appended {}".format(entry[0]))
-                            cluster_data['nodes_pending'].append(entry[0])
-                if "stonith:" in line:
-                    if "stonith:external/sbd" in line:
-                        cluster_data['stonith']['sbd']['found'] = True
-                        msg.debug(">", "stonith:external/sbd found")
-                    else:
-                        entry = re.findall(r"\(stonith:(.*)\):", line)
-                        if entry:
-                            _type = entry[0]
-                            if _type not in cluster_data['stonith']:
-                                cluster_data['stonith'][_type] = {}
-                                cluster_data['stonith'][_type]['found'] = True
-                        msg.debug(">", "stonith:{} found".format(_type))
-
-        ##### members.txt
-        filename = "members.txt"
-        msg.debug("_get_cluster_nodes: File", filename)
-        filepath = node_data_source + "/" + filename
-        try:
-            with open(filepath) as f:
-                filedata = f.read().splitlines()
-                f.close()
-        except Exception as e:
-            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.verbose()
-            filedata = ''
-
-        if filedata:
-            node_list = []
-            for line in filedata:
-                node_list = line.split()
-            for member_node in node_list:
-                if member_node not in cluster_data['nodes']:
-                    msg.debug(">", "Added {} from {}".format(member_node, filename))
-                    cluster_data['nodes'][member_node] = {}
-                    cluster_data['nodes'][member_node]['is_included'] = False
+        cluster_data = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data)
+        cluster_data = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data)
+        cluster_data, found_crm_mon = _parse_crm_mon_txt(msg, node_data_source, node_name, cluster_data, found_crm_mon)
+        cluster_data = _parse_members_txt(msg, node_data_source, cluster_data)
 
     # find missing nodes excluded from members.txt
     node_states = ['unclean', 'standby', 'pending', 'maintenance', 'offline', 'online']
@@ -808,11 +826,24 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
     for state in node_states:
         check_nodes = "nodes_" + state
         msg.debug("> {}".format(check_nodes), "cluster_data[nodes] {}".format(cluster_data['nodes'].keys()))
-        for member_node in cluster_data[check_nodes]:
-            if member_node not in cluster_data['nodes']:
-                msg.debug(">", "Added {} from {}".format(member_node, check_nodes))
-                cluster_data['nodes'][member_node] = {}
-                cluster_data['nodes'][member_node]['is_included'] = False
+        for node_name in cluster_data[check_nodes]:
+            if node_name not in cluster_data['nodes']:
+                msg.debug(">", "Added {} from {}".format(node_name, check_nodes))
+                cluster_data['nodes'][node_name] = {}
+                cluster_data['nodes'][node_name]['is_included'] = False
+
+    # check source directory for crm_mon.txt
+    if not found_crm_mon:
+        filename = "crm_mon.txt"
+        filepath = file_data['dirpath_data_source'] + "/" + filename
+        if os.path.exists(filepath):
+            msg.verbose("Found {}".format(filename), filepath)
+            cluster_data, found_crm_mon = _parse_crm_mon_txt(msg, file_data['dirpath_data_source'], node_name, cluster_data, found_crm_mon)
+
+    if not found_crm_mon:
+        msg.min(" WARNING: Cluster data incomplete, no crm_mon.txt file found.")
+
+    cluster_data['data_complete'] = found_crm_mon
 
     return cluster_data
 
@@ -831,8 +862,7 @@ def _get_stonith_sbd(msg, file_data, cluster_data):
                 filedata = f.read().splitlines()
                 f.close()
         except Exception as e:
-            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.verbose()
+            msg.min(" Missing {}".format(filename), "{}".format(str(e)))
             filedata = ''
 
         if filedata:
@@ -856,8 +886,7 @@ def _get_stonith_sbd(msg, file_data, cluster_data):
                 filedata = f.read().splitlines()
                 f.close()
         except Exception as e:
-            msg.verbose(" Error: Cannot open {} file - {}".format(filename, str(e)))
-            msg.verbose()
+            msg.min(" Missing {}".format(filename), "{}".format(str(e)))
             filedata = ''
 
         if filedata:
@@ -929,6 +958,7 @@ def _get_cluster_nodes_state(msg, file_data, cluster_data):
 
 def get_cluster_data(msg, file_data):
     cluster_data = {
+        'data_complete': True,
         'nodes': {},
         'stonith': {
             'sbd': {
@@ -1116,7 +1146,7 @@ def main(argv):
 
                 elif this_file_data['type'] == 'file':
                     if not this_file_data['tail_mime_type'] in VALID_MIME_TYPES:
-                        msg.min(" Skipping file", "Not an HB report compressed file - {0}".format(this_file_data['path']))
+                        msg.min(" Missing file", "Not an HB report compressed file - {0}".format(this_file_data['path']))
                         separate_entry(msg, total_args_given)
                         continue
                     this_file_data['remove_tarball'] = remove_archive
