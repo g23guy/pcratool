@@ -847,69 +847,89 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
 
     return cluster_data
 
+def _parse_sbd_txt(msg, dirpath, cluster_data, found_sbd_txt):
+    ##### sbd.txt
+    filename = "sbd.txt"
+    filepath = dirpath + "/" + filename
+    msg.debug("_parse_sbd_txt: File", filename)
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    if filedata:
+        found_sbd_txt = True
+        for line in filedata:
+            if line and line[0].isdigit():
+                entry = line.split()
+                server = entry[1]
+                status = entry[2]
+                if 'nodes' not in cluster_data['stonith']['sbd']:
+                    cluster_data['stonith']['sbd']['nodes'] = {}
+                if server not in cluster_data['stonith']['sbd']['nodes']:
+                    cluster_data['stonith']['sbd']['nodes'][server] = {'slots': []}
+                cluster_data['stonith']['sbd']['nodes'][server]['slots'].append(entry)
+
+    return [cluster_data, found_sbd_txt]
+
+def _parse_sbd(msg, dirpath, cluster_data, found_sbd):
+    ##### sbd
+    filename = "sbd"
+    filepath = dirpath + "/" + filename
+    msg.debug("_parse_sbd: File", filename)
+
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    if filedata:
+        found_sbd = True
+        for line in filedata:
+            if line.startswith("#"):
+                continue
+            line = line.strip()
+            if line and "=" in line:
+                key, value = line.split('=', 1)
+                if 'SBD_DEVICE' in key:
+                    device_list = value.strip().strip('"').strip("'").split(';')
+                    cluster_data['stonith']['sbd']['config'][key.strip()] = device_list
+                else:
+                    cluster_data['stonith']['sbd']['config'][key.strip()] = value.strip().strip('"').strip("'")
+
+    return [cluster_data, found_sbd]
+
 def _get_stonith_sbd(msg, file_data, cluster_data):
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
+    found_sbd_txt = False
+    found_sbd = False
+    cluster_data['stonith']['sbd']['all_clear'] = -1
     for node_data_source in subfolders:
         msg.verbose("Processing SBD info", node_data_source)
         node_name = os.path.basename(node_data_source)
 
-        ##### sbd.txt
-        filename = "sbd.txt"
-        msg.debug("_get_stonith_sbd: File", filename)
-        filepath = node_data_source + "/" + filename
-        try:
-            with open(filepath) as f:
-                filedata = f.read().splitlines()
-                f.close()
-        except Exception as e:
-            msg.min(" Missing {}".format(filename), "{}".format(str(e)))
-            filedata = ''
+        cluster_data, found_sbd_txt = _parse_sbd_txt(msg, node_data_source, cluster_data, found_sbd_txt)
+        cluster_data, found_sbd = _parse_sbd(msg, node_data_source, cluster_data, found_sbd)
 
-        if filedata:
-            for line in filedata:
-                if line and line[0].isdigit():
-                    entry = line.split()
-                    server = entry[1]
-                    status = entry[2]
-                    if 'nodes' not in cluster_data['stonith']['sbd']:
-                        cluster_data['stonith']['sbd']['nodes'] = {}
-                    if server not in cluster_data['stonith']['sbd']['nodes']:
-                        cluster_data['stonith']['sbd']['nodes'][server] = {'slots': []}
-                    cluster_data['stonith']['sbd']['nodes'][server]['slots'].append(entry)
-
-        ##### sbd
-        filename = "sbd"
-        msg.debug("_get_stonith_sbd: File", filename)
-        filepath = node_data_source + "/" + filename
-        try:
-            with open(filepath) as f:
-                filedata = f.read().splitlines()
-                f.close()
-        except Exception as e:
-            msg.min(" Missing {}".format(filename), "{}".format(str(e)))
-            filedata = ''
-
-        if filedata:
-            for line in filedata:
-                if line.startswith("#"):
-                    continue
-                line = line.strip()
-                if line and "=" in line:
-                    key, value = line.split('=', 1)
-                    if 'SBD_DEVICE' in key:
-                        device_list = value.strip().strip('"').strip("'").split(';')
-                        cluster_data['stonith']['sbd']['config'][key.strip()] = device_list
-                    else:
-                        cluster_data['stonith']['sbd']['config'][key.strip()] = value.strip().strip('"').strip("'")
-                            
-    msg.debug("_get_stonith_sbd:", "Calculating stonith SBD all_clear and is_clear")
-    cluster_data['stonith']['sbd']['all_clear'] = True
-    for node_name in cluster_data['stonith']['sbd']['nodes'].keys():
-        cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = True
-        for status in cluster_data['stonith']['sbd']['nodes'][node_name]['slots']:
-            if 'clear' not in status:
-                cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = False
-                cluster_data['stonith']['sbd']['all_clear'] = False
+    if not found_sbd:
+        msg.verbose(" Warning:", "Missing sbd configuration file")
+    if found_sbd_txt:
+        msg.debug("_get_stonith_sbd:", "Calculating stonith SBD all_clear and is_clear")
+        cluster_data['stonith']['sbd']['all_clear'] = 1
+        for node_name in cluster_data['stonith']['sbd']['nodes'].keys():
+            cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = True
+            for status in cluster_data['stonith']['sbd']['nodes'][node_name]['slots']:
+                if 'clear' not in status:
+                    cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = False
+                    cluster_data['stonith']['sbd']['all_clear'] = 0
+    else:
+        msg.min(" Warning:", "Missing sbd.txt data file")
 
     return cluster_data
 
