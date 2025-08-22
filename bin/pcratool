@@ -749,6 +749,7 @@ def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
                         msg.debug(">", "nodes_pending list, appended {}".format(entry[0]))
                         cluster_data['nodes_pending'].append(entry[0])
             if "stonith:" in line:
+                cluster_data['stonith']['enabled'] = True
                 if "stonith:external/sbd" in line:
                     cluster_data['stonith']['sbd']['found'] = True
                     msg.debug(">", "stonith:external/sbd found")
@@ -997,6 +998,7 @@ def get_cluster_data(msg, file_data):
                 'found': False,
                 'config': {},
             },
+            'enabled': False,
         },
         'cnt_nodes_configured': -1,
         'cnt_nodes_included': 0,
