@@ -896,23 +896,6 @@ def _parse_cib_xml(msg, dirpath, node_name, cluster_data):
             else:
                 cluster_data['nodes'][uname]['cib_resources'] = node_resources
 
-        # Get 
-        #for child in root:
-        #    if child.tag == "status":
-        #        for resource in child:
-        #            if resource.tag == "node_":
-        #                resource_id = resource.attrib.get("id", "")
-        #                if resource_id not in cluster_data['resources']:
-        #                    cluster_data['resources'][resource_id] = {}
-        #                for attr in resource.attrib:
-        #                    cluster_data['resources'][resource_id][attr] = resource.attrib[attr]
-        #            elif resource.tag == "group":
-        #                group_id = resource.attrib.get("id", "")
-        #                if group_id not in cluster_data['groups']:
-        #                    cluster_data['groups'][group_id] = {}
-        #                for attr in resource.attrib:
-        #                    cluster_data['groups'][group_id][attr] = resource.attrib[attr]
-
     return cluster_data
 
 
