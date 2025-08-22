@@ -40,6 +40,11 @@ import getopt
 import smtplib
 import subprocess
 import configparser
+import pprint
+import xmltodict
+import xml.dom.minidom
+import xml.etree.ElementTree as ET
+from lxml import etree 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -812,7 +817,8 @@ def _get_nodes_system_details(msg, file_data, cluster_data):
 
     return cluster_data
 
-def _parse_cib_xml(msg, dirpath, node_name, cluster_data, found_crm_mon):
+def _parse_cib_xml(msg, dirpath, node_name, cluster_data):
+    msg.verbose("Parsing cluster CIB ", "from {} node directory".format(node_name))
     ##### crm_mon.txt
     filename = "cib.xml"
     filepath = dirpath + "/" + filename
@@ -820,28 +826,91 @@ def _parse_cib_xml(msg, dirpath, node_name, cluster_data, found_crm_mon):
     stop_early = False
     try:
         with open(filepath) as f:
-            filedata = f.read().splitlines()
+            #xtree = ET.parse(f)
+            xdom = xml.dom.minidom.parse(f)
             f.close()
     except Exception as e:
         msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ''
 
-    if filedata:
-        found_crm_mon = True
-        for line in filedata:
-...
+    if cluster_data.get('cib') is None:
+        cluster_data['cib'] = {}
+
+    if xdom:
+        cib_element = xdom.getElementsByTagName('cib')[0]
+        for attr in cib_element.attributes.keys():
+            msg.debug("> cib attribute", "{} = {}".format(attr, cib_element.getAttribute(attr)))  
+            #if attr in ['crm_feature_set', 'cib-last-written', 'update-origin', 'have-quorum']:
+            cluster_data['cib'][attr] = cib_element.getAttribute(attr)
+
+        # walking through cib.xml to get values
+        # cib > node_state > transient_attributes > instance_attributes > nvpair
+        node_element = xdom.getElementsByTagName('node_state')
+        for node in node_element:
+            uname =  node.getAttribute("uname")
+            if uname not in cluster_data['nodes']:
+                cluster_data['nodes'][uname] = {}
+            if 'cib_state' not in cluster_data['nodes'][uname]:
+                cluster_data['nodes'][uname]['cib_state'] = {}
+            for attr in node.attributes.keys():
+                    cluster_data['nodes'][uname]['cib_state'][attr] = node.getAttribute(attr)
+
+            trans_attrs = node.getElementsByTagName('transient_attributes')
+            for t_attr in trans_attrs:
+                cluster_data['nodes'][uname]['cib_node_attrs'] = {}
+                for attr in t_attr.attributes.keys():
+                    cluster_data['nodes'][uname]['cib_node_attrs'][str(t_attr.getAttribute(attr))] = {}
+                    i_attrs = t_attr.getElementsByTagName('instance_attributes')
+                    for i_attr in i_attrs:
+                       i_attr_id = i_attr.getAttribute('id').split('-')[1]
+                       nv_pairs = i_attr.getElementsByTagName('nvpair')
+                       for nv in nv_pairs:
+                        nv_name = nv.getAttribute('name')
+                        nv_value = nv.getAttribute('value')
+                        cluster_data['nodes'][uname]['cib_node_attrs'][i_attr_id][nv_name] = nv_value
+            
+            node_resources = {}
+            lrm_resources = node.getElementsByTagName('lrm_resource')
+            for lrm in lrm_resources:
+                resource_id = lrm.getAttribute("id")
+                if resource_id not in node_resources:
+                    node_resources[resource_id] = {}
+                for attr in ['type', 'class']:
+                    node_resources[resource_id][attr] = lrm.getAttribute(attr)
+                    lrm_ops = lrm.getElementsByTagName('lrm_rsc_op')
+
+                    if node_resources[resource_id].get('operations') is None:
+                        node_resources[resource_id]['operations'] = {}
+                    for op in lrm_ops:
+                        op_name = op.getAttribute('operation')
+                        on_node = op.getAttribute('on_node')
+                        rc_code = op.getAttribute('rc-code')
+                        node_resources[resource_id]['operations'][op_name] = {
+                            'on_node': on_node,
+                            'rc_code': rc_code
+                        }
+
+            if cluster_data['insync_cib_xml'] is True:
+                cluster_data['resources'] = node_resources
+                break
+            else:
+                cluster_data['nodes'][uname]['cib_resources'] = node_resources
+
+    return cluster_data
+
 
 def _get_nodes_cluster_cib(msg, file_data, cluster_data):
     found_crm_xml = False
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
-        msg.verbose("Processing cluster CRM info", "from {} node directory".format(node_name))
-        if node_name not in cluster_data['nodes']:
+        msg.verbose("Processing cluster CIB info", "from {} node directory".format(node_name))
+        if node_name in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
-            msg.debug("_get_nodes_cluster_crm:", "Added {} from {}".format(node_name, "directory"))
+            msg.debug("_get_nodes_cluster_cib:", "Added {} from {}".format(node_name, "directory"))
+            cluster_data = _parse_cib_xml(msg, node_data_source, node_name, cluster_data)
+    return cluster_data
             
-            ...f
 
 def _get_nodes_cluster_crm(msg, file_data, cluster_data):
     found_crm_mon = False
@@ -1061,9 +1130,7 @@ def get_cluster_data(msg, file_data):
     cluster_data = _get_cluster_basics(msg, file_data, cluster_data)
     cluster_data = _get_nodes_system_details(msg, file_data, cluster_data)
     cluster_data = _get_nodes_cluster_crm(msg, file_data, cluster_data)
-
-#    if cluster_data['insync_cib_xml']:
-#        cluster_data = _get_nodes_cluster_cib(msg, file_data, cluster_data)
+    cluster_data = _get_nodes_cluster_cib(msg, file_data, cluster_data)
 #    else:
 #        cluster_data = _get_nodes_cluster_crm(msg, file_data, cluster_data)
 #        cluster_data = _get_nodes_cluster_cib(msg, file_data, cluster_data)
