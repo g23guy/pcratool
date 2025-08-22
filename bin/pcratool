@@ -812,6 +812,37 @@ def _get_nodes_system_details(msg, file_data, cluster_data):
 
     return cluster_data
 
+def _parse_cib_xml(msg, dirpath, node_name, cluster_data, found_crm_mon):
+    ##### crm_mon.txt
+    filename = "cib.xml"
+    filepath = dirpath + "/" + filename
+    msg.debug("_parse_crm_mon_txt: File", filename)
+    stop_early = False
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    if filedata:
+        found_crm_mon = True
+        for line in filedata:
+...
+
+def _get_nodes_cluster_cib(msg, file_data, cluster_data):
+    found_crm_xml = False
+    subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
+    for node_data_source in subfolders:
+        node_name = os.path.basename(node_data_source)
+        msg.verbose("Processing cluster CRM info", "from {} node directory".format(node_name))
+        if node_name not in cluster_data['nodes']:
+            cluster_data['nodes'][node_name] = {}
+            msg.debug("_get_nodes_cluster_crm:", "Added {} from {}".format(node_name, "directory"))
+            
+            ...f
+
 def _get_nodes_cluster_crm(msg, file_data, cluster_data):
     found_crm_mon = False
     found_members = False
@@ -1030,6 +1061,13 @@ def get_cluster_data(msg, file_data):
     cluster_data = _get_cluster_basics(msg, file_data, cluster_data)
     cluster_data = _get_nodes_system_details(msg, file_data, cluster_data)
     cluster_data = _get_nodes_cluster_crm(msg, file_data, cluster_data)
+
+#    if cluster_data['insync_cib_xml']:
+#        cluster_data = _get_nodes_cluster_cib(msg, file_data, cluster_data)
+#    else:
+#        cluster_data = _get_nodes_cluster_crm(msg, file_data, cluster_data)
+#        cluster_data = _get_nodes_cluster_cib(msg, file_data, cluster_data)
+
     if cluster_data['stonith']['sbd']['found']:
         cluster_data = _get_stonith_sbd(msg, file_data, cluster_data)
     cluster_data = _get_cluster_nodes_state(msg, file_data, cluster_data)
