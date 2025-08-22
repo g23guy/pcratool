@@ -542,7 +542,7 @@ def _get_cluster_basics(msg, file_data, cluster_data):
 
     return cluster_data
 
-def _parse_permissions_txt(msg, dirpath, node_name, cluster_data):
+def _parse_permissions_txt(msg, dirpath, node_name, cluster_data, found_permissions):
     ##### permissions.txt
     filename = "permissions.txt"
     filepath = dirpath + "/" + filename
@@ -559,15 +559,16 @@ def _parse_permissions_txt(msg, dirpath, node_name, cluster_data):
         filedata = ''
 
     if filedata:
+        found_permissions = True
         cluster_data['nodes'][node_name]['permissions_valid'] = True
         for line in filedata:
             if "OK" not in line:
                 cluster_data['nodes'][node_name]['permissions_valid'] = False
                 cluster_data['permissions_valid_all_nodes'] = 0
 
-    return cluster_data
+    return [cluster_data, found_permissions]
 
-def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data):
+def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
     ##### sysinfo.txt
     filename = "sysinfo.txt"
     filepath = dirpath + "/" + filename
@@ -582,6 +583,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data):
 
     tmp_dist_list = []
     if filedata:
+        found_sysinfo = True
         msg.debug(">", "pkg versions and summary info")
         for line in filedata:
             line = line.lstrip()
@@ -656,7 +658,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data):
                         cluster_data['nodes'][node_name]['os_version_minor'] = ''
                 msg.verbose(" Distribution found", cluster_data['nodes'][node_name]['distribution'])
 
-    return cluster_data
+    return [cluster_data, found_sysinfo]
 
 def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
     ##### crm_mon.txt
@@ -762,7 +764,7 @@ def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
 
     return [cluster_data, found_crm_mon]
 
-def _parse_members_txt(msg, dirpath, cluster_data):
+def _parse_members_txt(msg, dirpath, cluster_data, found_members):
     ##### members.txt
     filename = "members.txt"
     filepath = dirpath + "/" + filename
@@ -776,6 +778,7 @@ def _parse_members_txt(msg, dirpath, cluster_data):
         filedata = ''
 
     if filedata:
+        found_members = True
         node_list = []
         for line in filedata:
             node_list = line.split()
@@ -785,10 +788,13 @@ def _parse_members_txt(msg, dirpath, cluster_data):
                 cluster_data['nodes'][node_name] = {}
                 cluster_data['nodes'][node_name]['is_included'] = False
 
-    return cluster_data
+    return [cluster_data, found_members]
 
 def _get_cluster_nodes(msg, file_data, cluster_data):
     found_crm_mon = False
+    found_permissions = False
+    found_sysinfo = False
+    found_members = False
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
@@ -815,12 +821,12 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
         else:
             cluster_data['nodes'][node_name]['is_running'] = False
 
-        cluster_data = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data)
-        cluster_data = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data)
+        cluster_data, found_permissions = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data, found_permissions)
+        cluster_data, found_sysinfo = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data, found_sysinfo)
         cluster_data, found_crm_mon = _parse_crm_mon_txt(msg, node_data_source, node_name, cluster_data, found_crm_mon)
-        cluster_data = _parse_members_txt(msg, node_data_source, cluster_data)
+        cluster_data, found_members = _parse_members_txt(msg, node_data_source, cluster_data, found_members)
 
-    # find missing nodes excluded from members.txt
+    # find missing nodes excluded from members.txt or directories
     node_states = ['unclean', 'standby', 'pending', 'maintenance', 'offline', 'online']
     msg.debug("_get_cluster_nodes:", "Find missing nodes from lists")
     for state in node_states:
@@ -842,6 +848,12 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
 
     if not found_crm_mon:
         msg.min("WARNING:", "Cluster data incomplete, no crm_mon.txt file found.")
+    if not found_permissions:
+        msg.verbose("Warning:", "No permissions.txt file found")
+    if not found_sysinfo:
+        msg.verbose("Warning:", "No sysinfo.txt file found")
+    if not found_members:
+        msg.verbose("Warning:", "No members.txt file found")
 
     cluster_data['data_complete'] = found_crm_mon
 
