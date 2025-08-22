@@ -798,7 +798,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
-        msg.verbose("Processing cluster info", "{} node directory".format(node_name))
+        msg.verbose("Processing cluster info", "from {} node directory".format(node_name))
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
             msg.debug("_get_cluster_nodes:", "Added {} from {}".format(node_name, "directory"))
@@ -923,8 +923,8 @@ def _get_stonith_sbd(msg, file_data, cluster_data):
     found_sbd = False
     cluster_data['stonith']['sbd']['all_clear'] = -1
     for node_data_source in subfolders:
-        msg.verbose("Processing SBD info", node_data_source)
         node_name = os.path.basename(node_data_source)
+        msg.verbose("Processing SBD info", "from {} node directory".format(node_name))
 
         cluster_data, found_sbd_txt = _parse_sbd_txt(msg, node_data_source, cluster_data, found_sbd_txt)
         cluster_data, found_sbd = _parse_sbd(msg, node_data_source, cluster_data, found_sbd)
