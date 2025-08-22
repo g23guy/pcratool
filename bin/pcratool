@@ -282,18 +282,18 @@ class DisplayMessages():
 def valid_archive_dir(msg, given_path):
     TEST_FILES = ['description.txt', 'analysis.txt']
     if not os.access(given_path, os.R_OK | os.X_OK):
-        msg.min(" Error", "Directory permission denied: {0}".format(given_path))
+        msg.min(" ERROR:", "Directory permission denied: {0}".format(given_path))
         msg.min(" * Suggestion", "Try sudo {} {}".format(tool_name, given_path))
         return False
     else:
         for test_file in TEST_FILES:
             file_path = given_path + '/' + test_file
             if not os.access(file_path, os.F_OK):
-                msg.min(" Error", "Invalid HB report directory: {0}".format(given_path))
-                msg.verbose(" * Missing", "{0}".format(file_path))
+                msg.min(" ERROR:", "Invalid cluster report directory: {0}".format(given_path))
+                msg.min(" * Missing", "{0}".format(file_path))
                 return False
             elif not os.access(file_path, os.R_OK):
-                msg.min(" Error", "Read file permission denied: {0}".format(file_path))
+                msg.min(" ERROR:", "Read file permission denied: {0}".format(file_path))
                 msg.min(" * Suggestion", "Try sudo {} {}".format(tool_name, given_path))
                 return False
     return True
@@ -499,7 +499,7 @@ def _get_cluster_basics(msg, file_data, cluster_data):
     except Exception as e:
         msg.min(" Missing {}".format(filename), "{}".format(str(e)))
         cluster_data['data_complete'] = False
-        msg.min(" WARNING: Cluster data incomplete, no {} file found.".format(filename))
+        msg.min(" WARNING:", "Cluster data incomplete, no {} file found.".format(filename))
         msg.min("          All cluster_data[insync_*] values are wrong.")
         filedata = ''
 
@@ -554,7 +554,7 @@ def _parse_permissions_txt(msg, dirpath, node_name, cluster_data):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         cluster_data['nodes'][node_name]['permissions_valid'] = None
         filedata = ''
 
@@ -577,7 +577,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ''
 
     tmp_dist_list = []
@@ -654,7 +654,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data):
                         cluster_data['nodes'][node_name]['distribution'] = ''
                         cluster_data['nodes'][node_name]['os_version_major'] = ''
                         cluster_data['nodes'][node_name]['os_version_minor'] = ''
-
+                msg.verbose(" Distribution found", cluster_data['nodes'][node_name]['distribution'])
 
     return cluster_data
 
@@ -669,7 +669,7 @@ def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ''
 
     if filedata:
@@ -772,7 +772,7 @@ def _parse_members_txt(msg, dirpath, cluster_data):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ''
 
     if filedata:
@@ -791,8 +791,8 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
     found_crm_mon = False
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
-        msg.verbose("Processing cluster info", node_data_source)
         node_name = os.path.basename(node_data_source)
+        msg.verbose("Processing cluster info", "{} node directory".format(node_name))
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
             msg.debug("_get_cluster_nodes:", "Added {} from {}".format(node_name, "directory"))
@@ -832,7 +832,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
                 cluster_data['nodes'][node_name] = {}
                 cluster_data['nodes'][node_name]['is_included'] = False
 
-    # check source directory for crm_mon.txt
+    # if node directories don't have crm_mon.txt, check source directory
     if not found_crm_mon:
         filename = "crm_mon.txt"
         filepath = file_data['dirpath_data_source'] + "/" + filename
@@ -841,7 +841,7 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
             cluster_data, found_crm_mon = _parse_crm_mon_txt(msg, file_data['dirpath_data_source'], node_name, cluster_data, found_crm_mon)
 
     if not found_crm_mon:
-        msg.min(" WARNING: Cluster data incomplete, no crm_mon.txt file found.")
+        msg.min("WARNING:", "Cluster data incomplete, no crm_mon.txt file found.")
 
     cluster_data['data_complete'] = found_crm_mon
 
@@ -857,7 +857,7 @@ def _parse_sbd_txt(msg, dirpath, cluster_data, found_sbd_txt):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ''
 
     if filedata:
@@ -886,7 +886,7 @@ def _parse_sbd(msg, dirpath, cluster_data, found_sbd):
             filedata = f.read().splitlines()
             f.close()
     except Exception as e:
-        msg.min(" Missing {}".format(filename), "{}".format(str(e)))
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ''
 
     if filedata:
@@ -918,7 +918,7 @@ def _get_stonith_sbd(msg, file_data, cluster_data):
         cluster_data, found_sbd = _parse_sbd(msg, node_data_source, cluster_data, found_sbd)
 
     if not found_sbd:
-        msg.verbose(" Warning:", "Missing sbd configuration file")
+        msg.verbose("Warning:", "No sbd configuration file found")
     if found_sbd_txt:
         msg.debug("_get_stonith_sbd:", "Calculating stonith SBD all_clear and is_clear")
         cluster_data['stonith']['sbd']['all_clear'] = 1
@@ -929,7 +929,7 @@ def _get_stonith_sbd(msg, file_data, cluster_data):
                     cluster_data['stonith']['sbd']['nodes'][node_name]['is_clear'] = False
                     cluster_data['stonith']['sbd']['all_clear'] = 0
     else:
-        msg.min(" Warning:", "Missing sbd.txt data file")
+        msg.verbose("Warning:", "No sbd.txt configuration file found")
 
     return cluster_data
 
@@ -1017,7 +1017,7 @@ def analyze_cluster(msg, data):
     try:
         os.makedirs(data['source_data']['dirpath_reports'], exist_ok=True)
     except OSError as e:
-        print(f"Error creating folder: {e}")
+        msg.min(" ERROR:", "{}".format(str(e)))
         sys.exit(13)
 
     report_file = data['source_data']['dirpath_reports'] + "/report_data.json"
@@ -1025,8 +1025,7 @@ def analyze_cluster(msg, data):
         with open(report_file, "w") as f:
             json.dump(data, f, indent = 4)
     except Exception as e:
-        msg.min("Error: Cannot write {} file - {}".format(report_file, str(e)))
-        msg.min()
+        msg.min(" ERROR:", "Cannot write {} file - {}".format(report_file, str(e)))
         sys.exit(13)
     msg.min("Cluster Report Data File", report_file)
 
@@ -1150,7 +1149,7 @@ def main(argv):
                             if this_file_data['head_write']:    
                                 this_file_data['dirpath_reports'] = this_file_data['path'] + "_reports"
                             else:
-                                msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
+                                msg.min(" ", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
                                 msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                 separate_entry(msg, total_args_given)
                                 continue
@@ -1179,7 +1178,7 @@ def main(argv):
                         if this_file_data['head_write']:
                             this_file_data['dirpath_extract_here'] = this_file_data['head']
                         else:
-                            msg.min(" Error", "Write permisson denied, cannot extract file to {0}".format(this_file_data['head']))
+                            msg.min(" ERROR:", "Write permisson denied, cannot extract file to {0}".format(this_file_data['head']))
                             msg.min(" * Suggestion", "Use -x, --dirpath_extract_here to specify an alternate extraction directory")
                             separate_entry(msg, total_args_given)
                             continue
@@ -1199,7 +1198,7 @@ def main(argv):
                                 if this_file_data['head_write']:
                                     this_file_data['dirpath_reports'] = this_file_data['path'] + "_reports"
                                 else:
-                                    msg.min(" Error", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
+                                    msg.min(" ERROR:", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
                                     msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                     separate_entry(msg, total_args_given)
                                     continue
@@ -1213,12 +1212,12 @@ def main(argv):
                     separate_entry(msg, total_args_given)
 
                 elif not this_file_data['tail_read']:
-                    msg.min(" Error", "Read permisson denied - {0}".format(this_file_data['path']))
+                    msg.min(" ERROR:", "Read permisson denied - {0}".format(this_file_data['path']))
                     msg.min(" * Suggestion", "Use chmod or sudo to elevate read permissions")
                     separate_entry(msg, total_args_given)
                     continue
                 else:
-                    msg.min(" Error", "Unknown file type - {0}".format(this_file_data['path']))
+                    msg.min(" ERROR:", "Unknown file type - {0}".format(this_file_data['path']))
                     separate_entry(msg, total_args_given)
                     continue
             clean_up(msg, report_data)
