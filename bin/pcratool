@@ -791,20 +791,39 @@ def _parse_members_txt(msg, dirpath, cluster_data, found_members):
 
     return [cluster_data, found_members]
 
-def _get_cluster_nodes(msg, file_data, cluster_data):
-    found_crm_mon = False
+def _get_nodes_system_details(msg, file_data, cluster_data):
     found_permissions = False
     found_sysinfo = False
+    subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
+    for node_data_source in subfolders:
+        node_name = os.path.basename(node_data_source)
+        msg.verbose("Processing system details", "from {} node directory".format(node_name))
+        if node_name not in cluster_data['nodes']:
+            cluster_data['nodes'][node_name] = {}
+            msg.debug("_get_nodes_system_details:", "Added {} from {}".format(node_name, "directory"))
+
+        cluster_data, found_sysinfo = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data, found_sysinfo)
+        cluster_data, found_permissions = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data, found_permissions)
+
+    if not found_permissions:
+        msg.verbose("Warning:", "No permissions.txt file found")
+    if not found_sysinfo:
+        msg.verbose("Warning:", "No sysinfo.txt file found")
+
+    return cluster_data
+
+def _get_nodes_cluster_crm(msg, file_data, cluster_data):
+    found_crm_mon = False
     found_members = False
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
-        msg.verbose("Processing cluster info", "from {} node directory".format(node_name))
+        msg.verbose("Processing cluster CRM info", "from {} node directory".format(node_name))
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
-            msg.debug("_get_cluster_nodes:", "Added {} from {}".format(node_name, "directory"))
+            msg.debug("_get_nodes_cluster_crm:", "Added {} from {}".format(node_name, "directory"))
 
-        msg.debug("_get_cluster_nodes:", "incremented cnt_nodes_included and set is_included on {}".format(node_name))
+        msg.debug("_get_nodes_cluster_crm:", "incremented cnt_nodes_included and set is_included on {}".format(node_name))
         cluster_data['cnt_nodes_included'] += 1
         cluster_data['nodes'][node_name]['is_included'] = True
 
@@ -822,14 +841,12 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
         else:
             cluster_data['nodes'][node_name]['is_running'] = False
 
-        cluster_data, found_permissions = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data, found_permissions)
-        cluster_data, found_sysinfo = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data, found_sysinfo)
         cluster_data, found_crm_mon = _parse_crm_mon_txt(msg, node_data_source, node_name, cluster_data, found_crm_mon)
         cluster_data, found_members = _parse_members_txt(msg, node_data_source, cluster_data, found_members)
 
     # find missing nodes excluded from members.txt or directories
     node_states = ['unclean', 'standby', 'pending', 'maintenance', 'offline', 'online']
-    msg.debug("_get_cluster_nodes:", "Find missing nodes from lists")
+    msg.debug("_get_nodes_cluster_crm:", "Find missing nodes from lists")
     for state in node_states:
         check_nodes = "nodes_" + state
         msg.debug("> {}".format(check_nodes), "cluster_data[nodes] {}".format(cluster_data['nodes'].keys()))
@@ -849,10 +866,6 @@ def _get_cluster_nodes(msg, file_data, cluster_data):
 
     if not found_crm_mon:
         msg.min("WARNING:", "Cluster data incomplete, no crm_mon.txt file found.")
-    if not found_permissions:
-        msg.verbose("Warning:", "No permissions.txt file found")
-    if not found_sysinfo:
-        msg.verbose("Warning:", "No sysinfo.txt file found")
     if not found_members:
         msg.verbose("Warning:", "No members.txt file found")
 
@@ -1015,7 +1028,8 @@ def get_cluster_data(msg, file_data):
    }
 
     cluster_data = _get_cluster_basics(msg, file_data, cluster_data)
-    cluster_data = _get_cluster_nodes(msg, file_data, cluster_data)
+    cluster_data = _get_nodes_system_details(msg, file_data, cluster_data)
+    cluster_data = _get_nodes_cluster_crm(msg, file_data, cluster_data)
     if cluster_data['stonith']['sbd']['found']:
         cluster_data = _get_stonith_sbd(msg, file_data, cluster_data)
     cluster_data = _get_cluster_nodes_state(msg, file_data, cluster_data)
