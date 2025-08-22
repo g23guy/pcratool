@@ -546,7 +546,7 @@ def _parse_permissions_txt(msg, dirpath, node_name, cluster_data):
     ##### permissions.txt
     filename = "permissions.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_get_cluster_nodes: File", filename)
+    msg.debug("_parse_permissions_txt: File", filename)
 
     msg.debug("> evaluate", "permissions_valid")
     try:
@@ -571,7 +571,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data):
     ##### sysinfo.txt
     filename = "sysinfo.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_get_cluster_nodes: File", filename)
+    msg.debug("_parse_sysinfo_txt: File", filename)
     try:
         with open(filepath) as f:
             filedata = f.read().splitlines()
@@ -662,7 +662,7 @@ def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
     ##### crm_mon.txt
     filename = "crm_mon.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_get_cluster_nodes: File", filename)
+    msg.debug("_parse_crm_mon_txt: File", filename)
     stop_early = False
     try:
         with open(filepath) as f:
@@ -766,7 +766,7 @@ def _parse_members_txt(msg, dirpath, cluster_data):
     ##### members.txt
     filename = "members.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_get_cluster_nodes: File", filename)
+    msg.debug("_parse_members_txt: File", filename)
     try:
         with open(filepath) as f:
             filedata = f.read().splitlines()
