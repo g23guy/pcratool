@@ -465,6 +465,16 @@ def check_report_path_given(msg, config_file, report_path_cmd, report_path_confi
 
     return path_data
 
+def _write_diff_file(filename, filepath, diff_content):
+    msg.debug("_write_diff_file: File", filepath)
+    try:
+        with open(filepath, "w") as f:
+            for line in diff_content:
+                f.write(line + "\n")
+            f.close()
+    except Exception as e:
+        msg.min(" Cannot write file {}".format(filename), "{}".format(str(e)))
+
 def _get_cluster_basics(msg, file_data, cluster_data):
     ##### description.txt
     filename = "description.txt"
@@ -502,42 +512,85 @@ def _get_cluster_basics(msg, file_data, cluster_data):
         msg.min("          All cluster_data[insync_*] values are wrong.")
         filedata = ''
 
+    in_state = False
+    diff_file = ''
+    diff_content = []
+    filepath_diff = ''
+    next_line = ''
     if filedata:
-        for line in filedata:
-            if "Diff members.txt" in line:
-                msg.debug("> evaluate", "insync_members_txt")
-                if "OK" in line:
-                    cluster_data['insync_members_txt'] = True
-                else:
-                    cluster_data['insync_members_txt'] = False
+        for i, line in enumerate(filedata):
+            if i < len(filedata) - 1:  # Check if a next element exists
+                next_line = filedata[i + 1]
+            else:
+                next_line = ''
 
-            if "Diff crm_mon.txt" in line:
-                msg.debug("> evaluate", "insync_crm_mon_txt")
-                if "OK" in line:
-                    cluster_data['insync_crm_mon_txt'] = True
+            if in_state:
+                if next_line.startswith('Diff') or next_line.startswith('Checking problems with '):
+                    filepath_diff = file_data['dirpath_reports'] + "/" + diff_file
+                    _write_diff_file(diff_file, filepath_diff, diff_content)
+                    cluster_data['diffs'][diff_key] = {}
+                    cluster_data['diffs'][diff_key]['filepath_diff'] = filepath_diff
+                    cluster_data['diffs'][diff_key]['count'] = len(diff_content)
+                    in_state = False
+                    diff_file = ''
+                    diff_content = []
                 else:
-                    cluster_data['insync_crm_mon_txt'] = False
+                    diff_content.append(line)
+            else:
+                if "Diff members.txt" in line:
+                    msg.debug("> evaluate", "insync_members_txt")
+                    if "OK" in line:
+                        cluster_data['insync_members_txt'] = True
+                    else:
+                        cluster_data['insync_members_txt'] = False
+                        in_state = True
+                        diff_file = "diff_members.txt"
+                        diff_key = "diff_members_txt"
+                        msg.debug(">", "differences found")
 
-            if "Diff corosync.conf" in line:
-                msg.debug("> evaluate", "insync_corosync_conf")
-                if "OK" in line:
-                    cluster_data['insync_corosync_conf'] = True
-                else:
-                    cluster_data['insync_corosync_conf'] = False
+                if "Diff crm_mon.txt" in line:
+                    msg.debug("> evaluate", "insync_crm_mon_txt")
+                    if "OK" in line:
+                        cluster_data['insync_crm_mon_txt'] = True
+                    else:
+                        cluster_data['insync_crm_mon_txt'] = False
+                        in_state = True
+                        diff_file = "diff_crm_mon.txt"
+                        diff_key = "diff_crm_mon_txt"
+                        msg.debug(">", "differences found")
 
-            if "Diff sysinfo.txt" in line:
-                msg.debug("> evaluate", "insync_sysinfo_txt")
-                if "OK" in line:
-                    cluster_data['insync_sysinfo_txt'] = True
-                else:
-                    cluster_data['insync_sysinfo_txt'] = False
+                if "Diff corosync.conf" in line:
+                    msg.debug("> evaluate", "insync_corosync_conf")
+                    if "OK" in line:
+                        cluster_data['insync_corosync_conf'] = True
+                    else:
+                        cluster_data['insync_corosync_conf'] = False
+                        in_state = True
+                        diff_file = "diff_corosync_conf.txt"
+                        diff_key = "diff_corosync_conf"
+                        msg.debug(">", "differences found")
 
-            if "Diff cib.xml" in line:
-                msg.debug("> evaluate", "insync_cib_xml")
-                if "OK" in line:
-                    cluster_data['insync_cib_xml'] = True
-                else:
-                    cluster_data['insync_cib_xml'] = False
+                if "Diff sysinfo.txt" in line:
+                    msg.debug("> evaluate", "insync_sysinfo_txt")
+                    if "OK" in line:
+                        cluster_data['insync_sysinfo_txt'] = True
+                    else:
+                        cluster_data['insync_sysinfo_txt'] = False
+                        in_state = True
+                        diff_file = "diff_sysinfo.txt"
+                        diff_key = "diff_sysinfo_txt"
+                        msg.debug(">", "differences found")
+
+                if "Diff cib.xml" in line:
+                    msg.debug("> evaluate", "insync_cib_xml")
+                    if "OK" in line:
+                        cluster_data['insync_cib_xml'] = True
+                    else:
+                        cluster_data['insync_cib_xml'] = False
+                        in_state = True
+                        diff_file = "diff_cib_xml.txt"
+                        diff_key = "diff_cib_xml"
+                        msg.debug(">", "differences found")
 
     return cluster_data
 
@@ -1107,6 +1160,7 @@ def get_cluster_data(msg, file_data):
             },
             'enabled': False,
         },
+        'diffs': {},
         'cnt_nodes_configured': -1,
         'cnt_nodes_included': 0,
         'cnt_resources_configured': -1,
@@ -1119,6 +1173,11 @@ def get_cluster_data(msg, file_data):
         'nodes_standby': [],
         'nodes_maintenance': [],
         'permissions_valid_all_nodes': 1,
+        'insync_members_txt': False,
+        'insync_crm_mon_txt': False,
+        'insync_corosync_conf': False,
+        'insync_sysinfo_txt': False,
+        'insync_cib_xml': False,
    }
 
     cluster_data = _get_cluster_basics(msg, file_data, cluster_data)
@@ -1137,15 +1196,18 @@ def get_cluster_data(msg, file_data):
 
     return cluster_data
 
-def analyze_cluster(msg, data):
-#    print()
-#    pprint.pprint(data, indent=4)
-
+def _create_reports_path(msg, data):
     try:
-        os.makedirs(data['source_data']['dirpath_reports'], exist_ok=True)
+        os.makedirs(data['dirpath_reports'], exist_ok=True)
     except OSError as e:
         msg.min(" ERROR:", "{}".format(str(e)))
         sys.exit(13)
+
+    return
+
+def analyze_cluster(msg, data):
+#    print()
+#    pprint.pprint(data, indent=4)
 
     report_file = data['source_data']['dirpath_reports'] + "/report_data.json"
     try:
@@ -1281,6 +1343,7 @@ def main(argv):
                                 separate_entry(msg, total_args_given)
                                 continue
                         this_file_data['dirpath_data_source'] = this_file_data['path']
+                        _create_reports_path(msg, this_file_data)
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster'] = this_cluster_data
@@ -1329,6 +1392,7 @@ def main(argv):
                                     msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                     separate_entry(msg, total_args_given)
                                     continue
+                        _create_reports_path(msg, this_file_data)
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster'] = this_cluster_data
