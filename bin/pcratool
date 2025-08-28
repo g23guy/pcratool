@@ -712,6 +712,56 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
 
     return [cluster_data, found_sysinfo]
 
+def _get_sysstat_section(msg, filedata, section):
+    content = []
+    in_section = False
+    next_line = ''
+
+    for i, line in enumerate(filedata):
+        if i < len(filedata) - 1:  # Check if a next element exists
+            next_line = filedata[i + 1]
+        else:
+            next_line = ''
+
+        if in_section:
+            if next_line.startswith('#####'):
+                in_section = False
+            else:
+                content.append(line)
+        else:
+            if line.startswith('#####') and section in line:
+                in_section = True
+
+    return content
+
+def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
+    ##### sysstats.txt
+    filename = "sysstats.txt"
+    filepath = dirpath + "/" + filename
+    msg.debug("_parse_sysstats_txt: File", filename)
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    if filedata:
+        found_sysstats = True
+
+        # cpuinfo
+        cpu_info = _get_sysstat_section(msg, filedata, "cat /proc/cpuinfo")
+        count_cpus = 0
+        for entry in cpu_info:
+            if entry.startswith("processor"):
+                count_cpus += 1
+        if "sysstats" not in cluster_data['nodes'][node_name]:
+            cluster_data['nodes'][node_name]['sysstats'] = {}
+        cluster_data['nodes'][node_name]['sysstats']['processors'] = count_cpus
+
+    return [cluster_data, found_sysstats]
+
 def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
     ##### crm_mon.txt
     filename = "crm_mon.txt"
@@ -846,6 +896,7 @@ def _parse_members_txt(msg, dirpath, cluster_data, found_members):
 def _get_nodes_system_details(msg, file_data, cluster_data):
     found_permissions = False
     found_sysinfo = False
+    found_sysstats = False
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
@@ -855,6 +906,7 @@ def _get_nodes_system_details(msg, file_data, cluster_data):
             msg.debug("_get_nodes_system_details:", "Added {} from {}".format(node_name, "directory"))
 
         cluster_data, found_sysinfo = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data, found_sysinfo)
+        cluster_data, found_sysstat = _parse_sysstats_txt(msg, node_data_source, node_name, cluster_data, found_sysstats)
         cluster_data, found_permissions = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data, found_permissions)
 
     if not found_permissions:
