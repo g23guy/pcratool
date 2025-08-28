@@ -908,7 +908,7 @@ def _get_nodes_system_details(msg, file_data, cluster_data):
             msg.debug("_get_nodes_system_details:", "Added {} from {}".format(node_name, "directory"))
 
         cluster_data, found_sysinfo = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data, found_sysinfo)
-        cluster_data, found_sysstat = _parse_sysstats_txt(msg, node_data_source, node_name, cluster_data, found_sysstats)
+        cluster_data, found_sysstats = _parse_sysstats_txt(msg, node_data_source, node_name, cluster_data, found_sysstats)
         cluster_data, found_permissions = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data, found_permissions)
 
     if not found_permissions:
