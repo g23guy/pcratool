@@ -637,13 +637,15 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
     if filedata:
         found_sysinfo = True
         msg.debug(">", "pkg versions and summary info")
+        if 'sysinfo' not in cluster_data['nodes'][node_name]:
+            cluster_data['nodes'][node_name]['sysinfo'] = {}
         for line in filedata:
             line = line.lstrip()
             if line.startswith("CRM Version: "):
-                cluster_data['nodes'][node_name]['crm'] = line.split()[2]
+                cluster_data['nodes'][node_name]['sysinfo']['crm'] = line.split()[2]
 
             if line.startswith("corosync "):
-                cluster_data['nodes'][node_name]['corosync'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['corosync'] = line.split()[1]
                 tmp_dist_list = line.split()
                 del tmp_dist_list[-1]
                 del tmp_dist_list[0:3]
@@ -652,63 +654,63 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['corosync'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['corosync'] = tmp_ver1
 
             if line.startswith("pacemaker "):
-                cluster_data['nodes'][node_name]['pacemaker'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['pacemaker'] = line.split()[1]
             elif re.search(r"^pacemaker-[0-9]", line):
                 tmp_ver1 = line.split('-', 1)[1]
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['pacemaker'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['pacemaker'] = tmp_ver1
 
             if line.startswith("resource-agents "):
-                cluster_data['nodes'][node_name]['resource-agents'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['resource-agents'] = line.split()[1]
             elif re.search(r"^resource-agents-[0-9]", line):
                 tmp_ver1 = line.split('-', 2)[2]
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['resource-agents'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['resource-agents'] = tmp_ver1
 
             if line.startswith("sbd "):
-                cluster_data['nodes'][node_name]['sbd'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['sbd'] = line.split()[1]
             elif re.search(r"^sbd-[0-9]", line):
                 tmp_ver1 = line.split('-', 1)[1]
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['sbd'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['sbd'] = tmp_ver1
 
             if line.startswith("Platform: "):
-                cluster_data['nodes'][node_name]['platform'] = line.split()[-1]
+                cluster_data['nodes'][node_name]['sysinfo']['platform'] = line.split()[-1]
             if line.startswith("Kernel release: "):
-                cluster_data['nodes'][node_name]['kernel'] = line.split()[-1]
+                cluster_data['nodes'][node_name]['sysinfo']['kernel'] = line.split()[-1]
             if line.startswith("Architecture: "):
-                cluster_data['nodes'][node_name]['arch'] = line.split()[-1]
+                cluster_data['nodes'][node_name]['sysinfo']['arch'] = line.split()[-1]
             if line.startswith("Distribution: "):
                 dist = line.split(' ', 1)[1]
                 if "SUSE Linux Enterprise" in dist:
                     last_word = dist.split()[-1]
                     if "SP" in last_word:
-                        cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-2]
-                        cluster_data['nodes'][node_name]['os_version_minor'] = last_word.replace("SP", '')
-                        cluster_data['nodes'][node_name]['distribution'] = dist
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = dist.split()[-2]
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = last_word.replace("SP", '')
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = dist
                     else:
-                        cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-1]
-                        cluster_data['nodes'][node_name]['os_version_minor'] = "0"
-                        cluster_data['nodes'][node_name]['distribution'] = dist
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = dist.split()[-1]
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = "0"
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = dist
                 else:
                     if tmp_dist_list:
-                        cluster_data['nodes'][node_name]['distribution'] = " ".join(tmp_dist_list)
-                        cluster_data['nodes'][node_name]['os_version_major'] = tmp_dist_list[-1]
-                        cluster_data['nodes'][node_name]['os_version_minor'] = ''
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = " ".join(tmp_dist_list)
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = tmp_dist_list[-1]
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = ''
                     else:
-                        cluster_data['nodes'][node_name]['distribution'] = ''
-                        cluster_data['nodes'][node_name]['os_version_major'] = ''
-                        cluster_data['nodes'][node_name]['os_version_minor'] = ''
-                msg.verbose(" Distribution found", cluster_data['nodes'][node_name]['distribution'])
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = ''
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = ''
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = ''
+                msg.verbose(" Distribution found", cluster_data['nodes'][node_name]['sysinfo']['distribution'])
 
     return [cluster_data, found_sysinfo]
 
