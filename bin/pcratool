@@ -714,7 +714,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
 
     return [cluster_data, found_sysinfo]
 
-def _get_sysstat_section(msg, filedata, section):
+def _get_sysstats_section(msg, filedata, section):
     content = []
     in_section = False
     next_line = ''
@@ -753,7 +753,7 @@ def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
         found_sysstats = True
 
         # cpuinfo
-        cpu_info = _get_sysstat_section(msg, filedata, "cat /proc/cpuinfo")
+        cpu_info = _get_sysstats_section(msg, filedata, "cat /proc/cpuinfo")
         count_cpus = 0
         for entry in cpu_info:
             if entry.startswith("processor"):
