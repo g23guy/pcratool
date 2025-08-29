@@ -716,6 +716,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
 
 def _get_sysstats_section(msg, filedata, section):
     content = []
+    found = False
     in_section = False
     next_line = ''
 
@@ -730,11 +731,12 @@ def _get_sysstats_section(msg, filedata, section):
                 in_section = False
             else:
                 content.append(line)
+                found = True
         else:
             if line.startswith('#####') and section in line:
                 in_section = True
 
-    return content
+    return [content, found]
 
 def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
     ##### sysstats.txt
@@ -751,16 +753,53 @@ def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
 
     if filedata:
         found_sysstats = True
-
-        # cpuinfo
-        cpu_info = _get_sysstats_section(msg, filedata, "cat /proc/cpuinfo")
-        count_cpus = 0
-        for entry in cpu_info:
-            if entry.startswith("processor"):
-                count_cpus += 1
         if "sysstats" not in cluster_data['nodes'][node_name]:
             cluster_data['nodes'][node_name]['sysstats'] = {}
-        cluster_data['nodes'][node_name]['sysstats']['processors'] = count_cpus
+
+        # cpuinfo
+        cpu_info, found = _get_sysstats_section(msg, filedata, "cat /proc/cpuinfo")
+        cluster_data['nodes'][node_name]['sysstats']['cpu'] = { 'count': 0 }
+        if found is True:
+            for entry in cpu_info:
+                if entry.startswith("processor"):
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['count'] += 1
+
+        # memory from top output
+        top_info, found = _get_sysstats_section(msg, filedata, "top -b -n")
+        if found is True:
+            cluster_data['nodes'][node_name]['sysstats']['tasks'] = { 'total': -1, 'running': -1, 'sleeping': -1, 'stopped': -1, 'zombie': -1 }
+            cluster_data['nodes'][node_name]['sysstats']['cpu'].update({'user': -1.0, 'system': -1.0, 'nice': -1.0, 'idle': -1.0, 'wait': -1.0, 'hard_int': -1.0, 'soft_int': -1.0, 'steal_time': -1.0})
+            cluster_data['nodes'][node_name]['sysstats']['mem'] = { 'total': -1, 'used': -1, 'avail': -1, 'avail_percent': -1 }
+            cluster_data['nodes'][node_name]['sysstats']['swap'] = { 'total': -1, 'used': -1 }
+
+            for entry in top_info:
+                if entry.startswith("Tasks:"):
+                    value = entry.split()
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['total'] = int(value[1])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['running'] = int(value[3])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['sleeping'] = int(value[5])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['stopped'] = int(value[7])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['zombie'] = int(value[9])
+                if entry.startswith('%Cpu(s):'):
+                    value = entry.split(',')
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['user'] = float(value[0].split()[1])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['system'] = float(value[1].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['nice'] = float(value[2].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['idle'] = float(value[3].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['wait'] = float(value[4].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['hard_int'] = float(value[5].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['soft_int'] = float(value[6].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['steal_time'] = float(value[7].split()[0])
+                if entry.startswith("MiB Mem"):
+                    value = entry.split()
+                    cluster_data['nodes'][node_name]['sysstats']['mem']['total'] = int(value[3].split('.')[0])
+                    cluster_data['nodes'][node_name]['sysstats']['mem']['used'] = int(value[5].split('.')[0])
+                if entry.startswith("MiB Swap"):
+                    value = entry.split()
+                    cluster_data['nodes'][node_name]['sysstats']['swap']['total'] = int(value[2].split('.')[0])
+                    cluster_data['nodes'][node_name]['sysstats']['swap']['used'] = int(value[6].split('.')[0])
+                    cluster_data['nodes'][node_name]['sysstats']['mem']['avail'] = int(value[8].split('.')[0])
+                    cluster_data['nodes'][node_name]['sysstats']['mem']['avail_percent'] = int(100-((cluster_data['nodes'][node_name]['sysstats']['mem']['total'] - cluster_data['nodes'][node_name]['sysstats']['mem']['avail'])*100/cluster_data['nodes'][node_name]['sysstats']['mem']['total']))
 
     return [cluster_data, found_sysstats]
 
