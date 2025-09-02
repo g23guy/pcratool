@@ -791,14 +791,46 @@ def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
                     cluster_data['nodes'][node_name]['sysstats']['cpu']['soft_int'] = float(value[6].split()[0])
                     cluster_data['nodes'][node_name]['sysstats']['cpu']['steal_time'] = float(value[7].split()[0])
                 if entry.startswith("MiB Mem"):
-                    value = entry.split()
-                    cluster_data['nodes'][node_name]['sysstats']['mem']['total'] = int(value[3].split('.')[0])
-                    cluster_data['nodes'][node_name]['sysstats']['mem']['used'] = int(value[5].split('.')[0])
+                    values = re.split(r"[,:]", entry)
+                    for value in values:
+                        if "total" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['mem']['total'] = int(mem_value)
+                        elif "used" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['mem']['used'] = int(mem_value)
                 if entry.startswith("MiB Swap"):
-                    value = entry.split()
-                    cluster_data['nodes'][node_name]['sysstats']['swap']['total'] = int(value[2].split('.')[0])
-                    cluster_data['nodes'][node_name]['sysstats']['swap']['used'] = int(value[6].split('.')[0])
-                    cluster_data['nodes'][node_name]['sysstats']['mem']['avail'] = int(value[8].split('.')[0])
+                    values = re.split(r"[,:]", entry)
+                    for value in values:
+                        if "total" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['swap']['total'] = int(mem_value)
+                        elif "avail" in value:
+                            values = value.split('d. ') # split the used and available value
+                            break
+                    for value in values:
+                        if "use" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['swap']['used'] = int(mem_value)
+                        elif "avail" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['mem']['avail'] = int(mem_value)
+
                     cluster_data['nodes'][node_name]['sysstats']['mem']['avail_percent'] = int(100-((cluster_data['nodes'][node_name]['sysstats']['mem']['total'] - cluster_data['nodes'][node_name]['sysstats']['mem']['avail'])*100/cluster_data['nodes'][node_name]['sysstats']['mem']['total']))
 
     return [cluster_data, found_sysstats]
