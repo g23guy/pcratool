@@ -811,7 +811,290 @@ def _get_nodes_system_details(msg, file_data, cluster_data):
 
     return cluster_data
 
-def _parse_cib_xml(msg, dirpath, node_name, cluster_data):
+def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
+    msg.verbose("Parsing cluster CIB ", "from {} node directory".format(node_name))
+    ##### crm_mon.txt
+    filename = "cib.xml"
+    filepath = dirpath + "/" + filename
+    msg.debug("_parse_crm_mon_txt: File", filename)
+    stop_early = False
+    try:
+        with open(filepath) as f:
+            #xtree = ET.parse(f)
+            xdom = xml.dom.minidom.parse(f)
+            f.close()
+    except Exception as e:
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ""
+
+    cib_data = {}
+    if cluster_data.get("cib") is None:
+        cluster_data["cib"] = {}
+
+    if xdom:
+        cib_element = xdom.getElementsByTagName("cib")[0]
+        for attr in cib_element.attributes.keys():
+            msg.debug("> cib attribute", "{} = {}".format(attr, cib_element.getAttribute(attr)))  
+            #if attr in ["crm_feature_set", "cib-last-written", "update-origin", "have-quorum"]:
+            cib_data[attr] = cib_element.getAttribute(attr)
+
+        # Walking through cib.xml to get configuration values
+        cfg = xdom.getElementsByTagName("configuration")
+
+        cib_data["cluster_property_sets"] = {}
+        # Get cluster properties
+        crm_configs = cfg[0].getElementsByTagName("crm_config")
+        if len(crm_configs) > 0:
+            cluster_property_sets  = crm_configs[0].getElementsByTagName("cluster_property_set")
+            if len(cluster_property_sets) > 0:
+                for cps in cluster_property_sets:
+                    for attr in cps.attributes.keys():
+                        cib_data["cluster_property_sets"][cps.getAttribute(attr)] = {}
+                        nvpairs = cps.getElementsByTagName("nvpair")
+                        for nv in nvpairs:
+                            nv_name = nv.getAttribute("name")
+                            nv_value = nv.getAttribute("value")
+                            cib_data["cluster_property_sets"][cps.getAttribute(attr)][nv_name] = nv_value
+
+        # Get node attributes
+        nodes_parent = xdom.getElementsByTagName("nodes")
+        nodes = nodes_parent[0].getElementsByTagName("node")
+        if len(nodes) > 0:
+            if "nodes" not in cib_data.keys():
+                cib_data["nodes"] = {}
+            for node in nodes:
+                node_uname= node.getAttribute("uname")
+                msg.debug("> cib node", "Found node {}".format(node_uname))
+                if node_uname not in cib_data:
+                    cib_data["nodes"][node_uname] = {}
+                instance_attributes = node.getElementsByTagName("instance_attributes")
+                nvpairs = instance_attributes[0].getElementsByTagName("nvpair") 
+                for nvp in nvpairs:
+                    nv_name = nvp.getAttribute("name")
+                    nv_value = nvp.getAttribute("value")
+                    cib_data["nodes"][node_uname][nv_name] = nv_value
+
+        # Get resources 
+        resources_parent = xdom.getElementsByTagName("resources")
+        if len(resources_parent) > 0:
+            cib_data["resources"] = {}
+            # Get primitives
+            primitives = resources_parent[0].getElementsByTagName("primitive")
+            if len(primitives) > 0:
+                if "primitives" not in cib_data["resources"]:
+                    cib_data["resources"]["primitives"] = {}
+                for primitive in primitives:
+                    primitive_id = primitive.getAttribute("id")
+                    cib_data["resources"]["primitives"][primitive_id] = {}
+                    for attr in primitive.attributes.keys():
+                        if attr not in ["id"]:
+                            cib_data["resources"]["primitives"][primitive_id][attr] = primitive.getAttribute(attr)
+                        instance_attributes = primitive.getElementsByTagName("instance_attributes")
+                        if len(instance_attributes) > 0:
+                            cib_data["resources"]["primitives"][primitive_id]["params"] = {}
+                            nvpairs = instance_attributes[0].getElementsByTagName("nvpair")
+                            for nv in nvpairs:
+                                nv_name = nv.getAttribute("name")
+                                nv_value = nv.getAttribute("value")
+                                cib_data["resources"]["primitives"][primitive_id]["params"][nv_name] = nv_value
+
+            # Get groups
+            # Get tags: group > meta_attributes > primitives > instance-attributes > operations > op
+            groups = resources_parent[0].getElementsByTagName("group")
+            if len(groups) > 0: 
+                if "groups" not in cib_data["resources"]:
+                    cib_data["resources"]["groups"] = {}
+                for group in groups:
+                    group_id = group.getAttribute("id")
+                    cib_data["resources"]["groups"][group_id] = {}
+                    # Get group attributes
+                    for attr in group.attributes.keys():
+                        if attr not in ["id"]:
+                            cib_data["resources"]["groups"][group_id][attr] = group.getAttribute(attr)
+                    meta_attributes = group.getElementsByTagName("meta_attributes")
+                    if len(meta_attributes) > 0:
+                        cib_data["resources"]["groups"][group_id]["meta"] = {}
+                        nvpairs = meta_attributes[0].getElementsByTagName("nvpair")
+                        for nv in nvpairs:
+                            nv_name = nv.getAttribute("name")
+                            nv_value = nv.getAttribute("value")
+                            cib_data["resources"]["groups"][group_id]["meta"][nv_name] = nv_value
+                    # Get primivites under groups
+                    group_primitives = group.getElementsByTagName("primitive")
+                    if len(group_primitives) > 0:
+                        if "primitives" not in cib_data["resources"]["groups"][group_id]:
+                            cib_data["resources"]["groups"][group_id]["primitives"] = {}
+                        for primitive in group_primitives:
+                            primitive_id = primitive.getAttribute("id")
+                            cib_data["resources"]["groups"][group_id]["primitives"][primitive_id] = {}
+                            # Get primitive attributes
+                            for attr in primitive.attributes.keys():
+                                if attr not in ["id"]:
+                                    cib_data["resources"]["groups"][group_id]["primitives"][primitive_id][attr] = primitive.getAttribute(attr)
+                            instance_attributes = primitive.getElementsByTagName("instance_attributes")
+                            if len(instance_attributes) > 0:
+                                cib_data["resources"]["groups"][group_id]["primitives"][primitive_id]["params"] = {}
+                                nvpairs = instance_attributes[0].getElementsByTagName("nvpair")
+                                # Get nvpairs under attrs
+                                for nv in nvpairs:
+                                    nv_name = nv.getAttribute("name")
+                                    nv_value = nv.getAttribute("value")
+                                    cib_data["resources"]["groups"][group_id]["primitives"][primitive_id]["params"][nv_name] = nv_value
+                            # Get operations
+                            operations = primitive.getElementsByTagName("operations")
+                            ops = operations[0].getElementsByTagName("op")
+                            if len(ops) > 0:
+                                cib_data["resources"]["groups"][group_id]["primitives"][primitive_id]["operations"] = {}
+                                for op in ops:
+                                    op_name = op.getAttribute("name")
+                                    cib_data["resources"]["groups"][group_id]["primitives"][primitive_id]["operations"][op_name] = {}
+                                    for attr in op.attributes.keys():
+                                        cib_data["resources"]["groups"][group_id]["primitives"][primitive_id]["operations"][op_name][attr] = op.getAttribute(attr)
+
+            # Get master/slave (multi-state resources)
+            masters = resources_parent[0].getElementsByTagName("master")
+            if len(masters) > 0:
+                cib_data["resources"]["masters"] = {}
+            for master in masters:
+                master_id = master.getAttribute("id")
+                cib_data["resources"]["masters"][master_id] = {}
+                meta_attributes = master.getElementsByTagName("meta_attributes")
+                if len(meta_attributes) > 0:
+                    cib_data["resources"]["masters"][master_id]["meta"] = {}
+                    nvpairs = meta_attributes[0].getElementsByTagName("nvpair")
+                    for nv in nvpairs:
+                        nv_name = nv.getAttribute("name")
+                        nv_value = nv.getAttribute("value")
+                        cib_data["resources"]["masters"][master_id]["meta"][nv_name] = nv_value
+                primitives = master.getElementsByTagName("primitive")
+                if len(primitives) > 0:
+                    cib_data["resources"]["masters"][master_id]["primitives"] = {}
+                    for primitive in primitives:
+                        primitive_id = primitive.getAttribute("id")
+                        cib_data["resources"]["masters"][master_id]["primitives"][primitive_id] = {}
+                        # Get primitive attributes
+                        for attr in primitive.attributes.keys():
+                            if attr not in ["id"]:
+                                cib_data["resources"]["masters"][master_id]["primitives"][primitive_id][attr] = primitive.getAttribute(attr)
+                        instance_attributes = primitive.getElementsByTagName("instance_attributes")
+                        if len(instance_attributes) > 0:
+                            cib_data["resources"]["masters"][master_id]["primitives"][primitive_id]["params"] = {}
+                            nvpairs = instance_attributes[0].getElementsByTagName("nvpair")
+                            # Get nvpairs under attrs
+                            for nv in nvpairs:
+                                nv_name = nv.getAttribute("name")
+                                nv_value = nv.getAttribute("value")
+                                cib_data["resources"]["masters"][master_id]["primitives"][primitive_id]["params"][nv_name] = nv_value
+                        # Get operations
+                        operations = primitive.getElementsByTagName("operations")
+                        ops = operations[0].getElementsByTagName("op")
+                        if len(ops) > 0:
+                            cib_data["resources"]["masters"][master_id]["primitives"][primitive_id]["operations"] = {}
+                            for op in ops:
+                                op_name = op.getAttribute("name")
+                                cib_data["resources"]["masters"][master_id]["primitives"][primitive_id]["operations"][op_name] = {}
+                                for attr in op.attributes.keys():
+                                    cib_data["resources"]["masters"][master_id]["primitives"][primitive_id]["operations"][op_name][attr] = op.getAttribute(attr)
+
+            # Get clones
+            clones = resources_parent[0].getElementsByTagName("clone")  
+            if len(clones) > 0:
+                cib_data["resources"]["clones"] = {}
+                for clone in clones:
+                    clone_id = clone.getAttribute("id")
+                    cib_data["resources"]["clones"][clone_id] = {}
+                    meta_attributes = clone.getElementsByTagName("meta_attributes")
+                    if len(meta_attributes) > 0:
+                        cib_data["resources"]["clones"][clone_id]["meta"] = {}
+                        nvpairs = meta_attributes[0].getElementsByTagName("nvpair")
+                        for nv in nvpairs:
+                            nv_name = nv.getAttribute("name")
+                            nv_value = nv.getAttribute("value")
+                            cib_data["resources"]["clones"][clone_id]["meta"][nv_name] = nv_value
+                    primitives = clone.getElementsByTagName("primitive")
+                    if len(primitives) > 0:
+                        cib_data["resources"]["clones"][clone_id]["primitives"] = {}
+                        for primitive in primitives:
+                            primitive_id = primitive.getAttribute("id")
+                            cib_data["resources"]["clones"][clone_id]["primitives"][primitive_id] = {}
+                            # Get primitive attributes
+                            for attr in primitive.attributes.keys():
+                                if attr not in ["id"]:
+                                    cib_data["resources"]["clones"][clone_id]["primitives"][primitive_id][attr] = primitive.getAttribute(attr)
+                            instance_attributes = primitive.getElementsByTagName("instance_attributes")
+                            if len(instance_attributes) > 0:
+                                cib_data["resources"]["clones"][clone_id]["primitives"][primitive_id]["params"] = {}
+                                nvpairs = instance_attributes[0].getElementsByTagName("nvpair")
+                                # Get nvpairs under attrs
+                                for nv in nvpairs:
+                                    nv_name = nv.getAttribute("name")
+                                    nv_value = nv.getAttribute("value")
+                                    cib_data["resources"]["clones"][clone_id]["primitives"][primitive_id]["params"][nv_name] = nv_value
+                            # Get operations
+                            operations = primitive.getElementsByTagName("operations")
+                            ops = operations[0].getElementsByTagName("op")
+                            if len(ops) > 0:
+                                cib_data["resources"]["clones"][clone_id]["primitives"][primitive_id]["operations"] = {}
+                                for op in ops:
+                                    op_name = op.getAttribute("name")
+                                    cib_data["resources"]["clones"][clone_id]["primitives"][primitive_id]["operations"][op_name] = {}
+                                    for attr in op.attributes.keys():
+                                        cib_data["resources"]["clones"][clone_id]["primitives"][primitive_id]["operations"][op_name][attr] = op.getAttribute(attr)
+
+        # Get constraints
+        constraints = cfg[0].getElementsByTagName("constraints")
+        if len(constraints) > 0:
+            cib_data["constraints"] = {}
+            rsc_colocation = constraints[0].getElementsByTagName("rsc_colocation")
+            if len(rsc_colocation) > 0:
+                cib_data["constraints"]["colocations"] = {}
+                for colocation in rsc_colocation:
+                    colocation_id = colocation.getAttribute("id")
+                    cib_data["constraints"]["colocations"][colocation_id] = {}
+                    for attr in colocation.attributes.keys():
+                        cib_data["constraints"]["colocations"][colocation_id][attr] = colocation.getAttribute(attr)
+
+         # Get resource defaults
+        rsc_defaults = xdom.getElementsByTagName("rsc_defaults")
+        if len(rsc_defaults) > 0:
+            cib_data["rsc_defaults"] = {}
+            meta_attributes = rsc_defaults[0].getElementsByTagName("meta_attributes")
+            if len(meta_attributes) > 0:
+                rsc_defaults_id =  meta_attributes[0].getAttribute("id")
+                print(f"Resource Defaults ID: {rsc_defaults_id}")
+                cib_data["rsc_defaults"][rsc_defaults_id] =   {}
+                nvpairs = meta_attributes[0].getElementsByTagName("nvpair")
+                if len(nvpairs) > 0:
+                    for nv in nvpairs:
+                        nv_name = nv.getAttribute("name")
+                        nv_value = nv.getAttribute("value")
+                        cib_data["rsc_defaults"][rsc_defaults_id][nv_name] = nv_value
+
+        # Get operation defaults
+        op_defaults = xdom.getElementsByTagName("op_defaults")
+        if len(op_defaults) > 0:
+            cib_data["op_defaults"] = {}
+            meta_attributes = op_defaults[0].getElementsByTagName("meta_attributes")
+            if len(meta_attributes) > 0:
+                op_defaults_id =  meta_attributes[0].getAttribute("id")
+                print(f"Operation Defaults ID: {op_defaults_id}")
+                cib_data["op_defaults"][op_defaults_id] =   {}
+                nvpairs = meta_attributes[0].getElementsByTagName("nvpair")
+                if len(nvpairs) > 0:
+                    for nv in nvpairs:
+                        nv_name = nv.getAttribute("name")
+                        nv_value = nv.getAttribute("value")
+                        cib_data["op_defaults"][op_defaults_id][nv_name] = nv_value
+
+
+
+
+    pprint.pprint(cib_data, indent=4)
+    quit()
+    pprint.pprint(cluster_data)
+    return cluster_data
+
+def _parse_cib_xml_node_state(msg, dirpath, node_name, cluster_data):
     msg.verbose("Parsing cluster CIB ", "from {} node directory".format(node_name))
     ##### crm_mon.txt
     filename = "cib.xml"
@@ -902,7 +1185,7 @@ def _get_nodes_cluster_cib(msg, file_data, cluster_data):
         if node_name in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
             msg.debug("_get_nodes_cluster_cib:", "Added {} from {}".format(node_name, "directory"))
-            cluster_data = _parse_cib_xml(msg, node_data_source, node_name, cluster_data)
+            cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
     return cluster_data
             
 
