@@ -1536,7 +1536,9 @@ def main(argv):
                     msg.min(" ERROR:", "Unknown file type - {0}".format(this_file_data['path']))
                     separate_entry(msg, total_args_given)
                     continue
-            clean_up(msg, report_data)
+                clean_up(msg, report_data)
+            else:
+                msg.min('Error: File or directory not found - {}'.format(given_source))
         msg.normal()
     else:
         usage()
