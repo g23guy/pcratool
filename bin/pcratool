@@ -465,6 +465,16 @@ def check_report_path_given(msg, config_file, report_path_cmd, report_path_confi
 
     return path_data
 
+def _write_diff_file(filename, filepath, diff_content):
+    msg.debug("_write_diff_file: File", filepath)
+    try:
+        with open(filepath, "w") as f:
+            for line in diff_content:
+                f.write(line + "\n")
+            f.close()
+    except Exception as e:
+        msg.min(" Cannot write file {}".format(filename), "{}".format(str(e)))
+
 def _get_cluster_basics(msg, file_data, cluster_data):
     ##### description.txt
     filename = "description.txt"
@@ -502,42 +512,85 @@ def _get_cluster_basics(msg, file_data, cluster_data):
         msg.min("          All cluster_data[insync_*] values are wrong.")
         filedata = ''
 
+    in_state = False
+    diff_file = ''
+    diff_content = []
+    filepath_diff = ''
+    next_line = ''
     if filedata:
-        for line in filedata:
-            if "Diff members.txt" in line:
-                msg.debug("> evaluate", "insync_members_txt")
-                if "OK" in line:
-                    cluster_data['insync_members_txt'] = True
-                else:
-                    cluster_data['insync_members_txt'] = False
+        for i, line in enumerate(filedata):
+            if i < len(filedata) - 1:  # Check if a next element exists
+                next_line = filedata[i + 1]
+            else:
+                next_line = ''
 
-            if "Diff crm_mon.txt" in line:
-                msg.debug("> evaluate", "insync_crm_mon_txt")
-                if "OK" in line:
-                    cluster_data['insync_crm_mon_txt'] = True
+            if in_state:
+                if next_line.startswith('Diff') or next_line.startswith('Checking problems with '):
+                    filepath_diff = file_data['dirpath_reports'] + "/" + diff_file
+                    _write_diff_file(diff_file, filepath_diff, diff_content)
+                    cluster_data['diffs'][diff_key] = {}
+                    cluster_data['diffs'][diff_key]['filepath_diff'] = filepath_diff
+                    cluster_data['diffs'][diff_key]['count'] = len(diff_content)
+                    in_state = False
+                    diff_file = ''
+                    diff_content = []
                 else:
-                    cluster_data['insync_crm_mon_txt'] = False
+                    diff_content.append(line)
+            else:
+                if "Diff members.txt" in line:
+                    msg.debug("> evaluate", "insync_members_txt")
+                    if "OK" in line:
+                        cluster_data['insync_members_txt'] = True
+                    else:
+                        cluster_data['insync_members_txt'] = False
+                        in_state = True
+                        diff_file = "diff_members.txt"
+                        diff_key = "diff_members_txt"
+                        msg.debug(">", "differences found")
 
-            if "Diff corosync.conf" in line:
-                msg.debug("> evaluate", "insync_corosync_conf")
-                if "OK" in line:
-                    cluster_data['insync_corosync_conf'] = True
-                else:
-                    cluster_data['insync_corosync_conf'] = False
+                if "Diff crm_mon.txt" in line:
+                    msg.debug("> evaluate", "insync_crm_mon_txt")
+                    if "OK" in line:
+                        cluster_data['insync_crm_mon_txt'] = True
+                    else:
+                        cluster_data['insync_crm_mon_txt'] = False
+                        in_state = True
+                        diff_file = "diff_crm_mon.txt"
+                        diff_key = "diff_crm_mon_txt"
+                        msg.debug(">", "differences found")
 
-            if "Diff sysinfo.txt" in line:
-                msg.debug("> evaluate", "insync_sysinfo_txt")
-                if "OK" in line:
-                    cluster_data['insync_sysinfo_txt'] = True
-                else:
-                    cluster_data['insync_sysinfo_txt'] = False
+                if "Diff corosync.conf" in line:
+                    msg.debug("> evaluate", "insync_corosync_conf")
+                    if "OK" in line:
+                        cluster_data['insync_corosync_conf'] = True
+                    else:
+                        cluster_data['insync_corosync_conf'] = False
+                        in_state = True
+                        diff_file = "diff_corosync_conf.txt"
+                        diff_key = "diff_corosync_conf"
+                        msg.debug(">", "differences found")
 
-            if "Diff cib.xml" in line:
-                msg.debug("> evaluate", "insync_cib_xml")
-                if "OK" in line:
-                    cluster_data['insync_cib_xml'] = True
-                else:
-                    cluster_data['insync_cib_xml'] = False
+                if "Diff sysinfo.txt" in line:
+                    msg.debug("> evaluate", "insync_sysinfo_txt")
+                    if "OK" in line:
+                        cluster_data['insync_sysinfo_txt'] = True
+                    else:
+                        cluster_data['insync_sysinfo_txt'] = False
+                        in_state = True
+                        diff_file = "diff_sysinfo.txt"
+                        diff_key = "diff_sysinfo_txt"
+                        msg.debug(">", "differences found")
+
+                if "Diff cib.xml" in line:
+                    msg.debug("> evaluate", "insync_cib_xml")
+                    if "OK" in line:
+                        cluster_data['insync_cib_xml'] = True
+                    else:
+                        cluster_data['insync_cib_xml'] = False
+                        in_state = True
+                        diff_file = "diff_cib_xml.txt"
+                        diff_key = "diff_cib_xml"
+                        msg.debug(">", "differences found")
 
     return cluster_data
 
@@ -584,13 +637,15 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
     if filedata:
         found_sysinfo = True
         msg.debug(">", "pkg versions and summary info")
+        if 'sysinfo' not in cluster_data['nodes'][node_name]:
+            cluster_data['nodes'][node_name]['sysinfo'] = {}
         for line in filedata:
             line = line.lstrip()
             if line.startswith("CRM Version: "):
-                cluster_data['nodes'][node_name]['crm'] = line.split()[2]
+                cluster_data['nodes'][node_name]['sysinfo']['crm'] = line.split()[2]
 
             if line.startswith("corosync "):
-                cluster_data['nodes'][node_name]['corosync'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['corosync'] = line.split()[1]
                 tmp_dist_list = line.split()
                 del tmp_dist_list[-1]
                 del tmp_dist_list[0:3]
@@ -599,65 +654,186 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['corosync'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['corosync'] = tmp_ver1
 
             if line.startswith("pacemaker "):
-                cluster_data['nodes'][node_name]['pacemaker'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['pacemaker'] = line.split()[1]
             elif re.search(r"^pacemaker-[0-9]", line):
                 tmp_ver1 = line.split('-', 1)[1]
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['pacemaker'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['pacemaker'] = tmp_ver1
 
             if line.startswith("resource-agents "):
-                cluster_data['nodes'][node_name]['resource-agents'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['resource-agents'] = line.split()[1]
             elif re.search(r"^resource-agents-[0-9]", line):
                 tmp_ver1 = line.split('-', 2)[2]
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['resource-agents'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['resource-agents'] = tmp_ver1
 
             if line.startswith("sbd "):
-                cluster_data['nodes'][node_name]['sbd'] = line.split()[1]
+                cluster_data['nodes'][node_name]['sysinfo']['sbd'] = line.split()[1]
             elif re.search(r"^sbd-[0-9]", line):
                 tmp_ver1 = line.split('-', 1)[1]
                 tmp_ver2 = tmp_ver1.split('.')
                 del tmp_ver2[-1]
                 tmp_ver1 = '.'.join(tmp_ver2)
-                cluster_data['nodes'][node_name]['sbd'] = tmp_ver1
+                cluster_data['nodes'][node_name]['sysinfo']['sbd'] = tmp_ver1
 
             if line.startswith("Platform: "):
-                cluster_data['nodes'][node_name]['platform'] = line.split()[-1]
+                cluster_data['nodes'][node_name]['sysinfo']['platform'] = line.split()[-1]
             if line.startswith("Kernel release: "):
-                cluster_data['nodes'][node_name]['kernel'] = line.split()[-1]
+                cluster_data['nodes'][node_name]['sysinfo']['kernel'] = line.split()[-1]
             if line.startswith("Architecture: "):
-                cluster_data['nodes'][node_name]['arch'] = line.split()[-1]
+                cluster_data['nodes'][node_name]['sysinfo']['arch'] = line.split()[-1]
             if line.startswith("Distribution: "):
                 dist = line.split(' ', 1)[1]
                 if "SUSE Linux Enterprise" in dist:
                     last_word = dist.split()[-1]
                     if "SP" in last_word:
-                        cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-2]
-                        cluster_data['nodes'][node_name]['os_version_minor'] = last_word.replace("SP", '')
-                        cluster_data['nodes'][node_name]['distribution'] = dist
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = dist.split()[-2]
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = last_word.replace("SP", '')
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = dist
                     else:
-                        cluster_data['nodes'][node_name]['os_version_major'] = dist.split()[-1]
-                        cluster_data['nodes'][node_name]['os_version_minor'] = "0"
-                        cluster_data['nodes'][node_name]['distribution'] = dist
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = dist.split()[-1]
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = "0"
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = dist
                 else:
                     if tmp_dist_list:
-                        cluster_data['nodes'][node_name]['distribution'] = " ".join(tmp_dist_list)
-                        cluster_data['nodes'][node_name]['os_version_major'] = tmp_dist_list[-1]
-                        cluster_data['nodes'][node_name]['os_version_minor'] = ''
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = " ".join(tmp_dist_list)
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = tmp_dist_list[-1]
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = ''
                     else:
-                        cluster_data['nodes'][node_name]['distribution'] = ''
-                        cluster_data['nodes'][node_name]['os_version_major'] = ''
-                        cluster_data['nodes'][node_name]['os_version_minor'] = ''
-                msg.verbose(" Distribution found", cluster_data['nodes'][node_name]['distribution'])
+                        cluster_data['nodes'][node_name]['sysinfo']['distribution'] = ''
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_major'] = ''
+                        cluster_data['nodes'][node_name]['sysinfo']['os_version_minor'] = ''
+                msg.verbose(" Distribution found", cluster_data['nodes'][node_name]['sysinfo']['distribution'])
 
     return [cluster_data, found_sysinfo]
+
+def _get_sysstats_section(msg, filedata, section):
+    content = []
+    found = False
+    in_section = False
+    next_line = ''
+
+    for i, line in enumerate(filedata):
+        if i < len(filedata) - 1:  # Check if a next element exists
+            next_line = filedata[i + 1]
+        else:
+            next_line = ''
+
+        if in_section:
+            if next_line.startswith('#####'):
+                in_section = False
+            else:
+                content.append(line)
+                found = True
+        else:
+            if line.startswith('#####') and section in line:
+                in_section = True
+
+    return [content, found]
+
+def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
+    ##### sysstats.txt
+    filename = "sysstats.txt"
+    filepath = dirpath + "/" + filename
+    msg.debug("_parse_sysstats_txt: File", filename)
+    try:
+        with open(filepath) as f:
+            filedata = f.read().splitlines()
+            f.close()
+    except Exception as e:
+        msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
+        filedata = ''
+
+    if filedata:
+        found_sysstats = True
+        if "sysstats" not in cluster_data['nodes'][node_name]:
+            cluster_data['nodes'][node_name]['sysstats'] = {}
+
+        # cpuinfo
+        cpu_info, found = _get_sysstats_section(msg, filedata, "cat /proc/cpuinfo")
+        cluster_data['nodes'][node_name]['sysstats']['cpu'] = { 'count': 0 }
+        if found is True:
+            for entry in cpu_info:
+                if entry.startswith("processor"):
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['count'] += 1
+
+        # memory from top output
+        top_info, found = _get_sysstats_section(msg, filedata, "top -b -n")
+        if found is True:
+            cluster_data['nodes'][node_name]['sysstats']['tasks'] = { 'total': -1, 'running': -1, 'sleeping': -1, 'stopped': -1, 'zombie': -1 }
+            cluster_data['nodes'][node_name]['sysstats']['cpu'].update({'user': -1.0, 'system': -1.0, 'nice': -1.0, 'idle': -1.0, 'wait': -1.0, 'hard_int': -1.0, 'soft_int': -1.0, 'steal_time': -1.0})
+            cluster_data['nodes'][node_name]['sysstats']['mem'] = { 'total': -1, 'used': -1, 'avail': -1, 'avail_percent': -1 }
+            cluster_data['nodes'][node_name]['sysstats']['swap'] = { 'total': -1, 'used': -1 }
+
+            for entry in top_info:
+                if entry.startswith("Tasks:"):
+                    value = entry.split()
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['total'] = int(value[1])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['running'] = int(value[3])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['sleeping'] = int(value[5])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['stopped'] = int(value[7])
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['zombie'] = int(value[9])
+                if entry.startswith('%Cpu(s):'):
+                    value = entry.split(',')
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['user'] = float(value[0].split()[1])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['system'] = float(value[1].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['nice'] = float(value[2].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['idle'] = float(value[3].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['wait'] = float(value[4].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['hard_int'] = float(value[5].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['soft_int'] = float(value[6].split()[0])
+                    cluster_data['nodes'][node_name]['sysstats']['cpu']['steal_time'] = float(value[7].split()[0])
+                if entry.startswith("MiB Mem"):
+                    values = re.split(r"[,:]", entry)
+                    for value in values:
+                        if "total" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['mem']['total'] = int(mem_value)
+                        elif "used" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['mem']['used'] = int(mem_value)
+                if entry.startswith("MiB Swap"):
+                    values = re.split(r"[,:]", entry)
+                    for value in values:
+                        if "total" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['swap']['total'] = int(mem_value)
+                        elif "avail" in value:
+                            values = value.split('d. ') # split the used and available value
+                            break
+                    for value in values:
+                        if "use" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['swap']['used'] = int(mem_value)
+                        elif "avail" in value:
+                            if "." in value:
+                                mem_value = value.split('.')[0]
+                            elif "+" in value:
+                                mem_value = value.split('+')[0]
+                            cluster_data['nodes'][node_name]['sysstats']['mem']['avail'] = int(mem_value)
+
+                    cluster_data['nodes'][node_name]['sysstats']['mem']['avail_percent'] = int(100-((cluster_data['nodes'][node_name]['sysstats']['mem']['total'] - cluster_data['nodes'][node_name]['sysstats']['mem']['avail'])*100/cluster_data['nodes'][node_name]['sysstats']['mem']['total']))
+
+    return [cluster_data, found_sysstats]
 
 def _parse_crm_mon_txt(msg, dirpath, node_name, cluster_data, found_crm_mon):
     ##### crm_mon.txt
@@ -793,6 +969,7 @@ def _parse_members_txt(msg, dirpath, cluster_data, found_members):
 def _get_nodes_system_details(msg, file_data, cluster_data):
     found_permissions = False
     found_sysinfo = False
+    found_sysstats = False
     subfolders = [ f.path for f in os.scandir(file_data['dirpath_data_source']) if f.is_dir() ]
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
@@ -802,6 +979,7 @@ def _get_nodes_system_details(msg, file_data, cluster_data):
             msg.debug("_get_nodes_system_details:", "Added {} from {}".format(node_name, "directory"))
 
         cluster_data, found_sysinfo = _parse_sysinfo_txt(msg, node_data_source, node_name, cluster_data, found_sysinfo)
+        cluster_data, found_sysstats = _parse_sysstats_txt(msg, node_data_source, node_name, cluster_data, found_sysstats)
         cluster_data, found_permissions = _parse_permissions_txt(msg, node_data_source, node_name, cluster_data, found_permissions)
 
     if not found_permissions:
@@ -1182,10 +1360,11 @@ def _get_nodes_cluster_cib(msg, file_data, cluster_data):
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
         msg.verbose("Processing cluster CIB info", "from {} node directory".format(node_name))
-        if node_name in cluster_data['nodes']:
+        if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
             msg.debug("_get_nodes_cluster_cib:", "Added {} from {}".format(node_name, "directory"))
             cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
+
     return cluster_data
             
 
@@ -1390,6 +1569,7 @@ def get_cluster_data(msg, file_data):
             },
             'enabled': False,
         },
+        'diffs': {},
         'cnt_nodes_configured': -1,
         'cnt_nodes_included': 0,
         'cnt_resources_configured': -1,
@@ -1402,6 +1582,11 @@ def get_cluster_data(msg, file_data):
         'nodes_standby': [],
         'nodes_maintenance': [],
         'permissions_valid_all_nodes': 1,
+        'insync_members_txt': False,
+        'insync_crm_mon_txt': False,
+        'insync_corosync_conf': False,
+        'insync_sysinfo_txt': False,
+        'insync_cib_xml': False,
    }
 
     cluster_data = _get_cluster_basics(msg, file_data, cluster_data)
@@ -1420,15 +1605,18 @@ def get_cluster_data(msg, file_data):
 
     return cluster_data
 
-def analyze_cluster(msg, data):
-#    print()
-#    pprint.pprint(data, indent=4)
-
+def _create_reports_path(msg, data):
     try:
-        os.makedirs(data['source_data']['dirpath_reports'], exist_ok=True)
+        os.makedirs(data['dirpath_reports'], exist_ok=True)
     except OSError as e:
         msg.min(" ERROR:", "{}".format(str(e)))
         sys.exit(13)
+
+    return
+
+def analyze_cluster(msg, data):
+#    print()
+#    pprint.pprint(data, indent=4)
 
     report_file = data['source_data']['dirpath_reports'] + "/report_data.json"
     try:
@@ -1564,6 +1752,7 @@ def main(argv):
                                 separate_entry(msg, total_args_given)
                                 continue
                         this_file_data['dirpath_data_source'] = this_file_data['path']
+                        _create_reports_path(msg, this_file_data)
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster'] = this_cluster_data
@@ -1612,6 +1801,7 @@ def main(argv):
                                     msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                     separate_entry(msg, total_args_given)
                                     continue
+                        _create_reports_path(msg, this_file_data)
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster'] = this_cluster_data
@@ -1630,7 +1820,9 @@ def main(argv):
                     msg.min(" ERROR:", "Unknown file type - {0}".format(this_file_data['path']))
                     separate_entry(msg, total_args_given)
                     continue
-            clean_up(msg, report_data)
+                clean_up(msg, report_data)
+            else:
+                msg.min('Error: File or directory not found - {}'.format(given_source))
         msg.normal()
     else:
         usage()
