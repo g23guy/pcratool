@@ -756,6 +756,35 @@ def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
         if "sysstats" not in cluster_data['nodes'][node_name]:
             cluster_data['nodes'][node_name]['sysstats'] = {}
 
+        # uptime
+        uptime_info, found = _get_sysstats_section(msg, filedata, '"uptime"')
+        cluster_data['nodes'][node_name]['sysstats']['uptime'] = -1 # in minutes
+        cluster_data['nodes'][node_name]['sysstats']['tasks'] = {'load_average': []} # the average number of jobs in the run queue over the last 1, 5 and 15 minutes.
+        if found is True:
+            for entry in uptime_info:
+                if 'average' in entry:
+                    updays = 0
+                    uphrs = 0
+                    upmin = 0
+                    values = re.split('[:,]', entry)
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['load_average'].append(float(values[-3])) # last 1 minute, index 0
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['load_average'].append(float(values[-2])) # last 5 minutes, index 1
+                    cluster_data['nodes'][node_name]['sysstats']['tasks']['load_average'].append(float(values[-1])) # last 15 minutes, index 2
+                    values = entry.split('up')[1].split(",")[0]
+                    if "days" in values:
+                        updays = values.split("days")[0]
+                        uphrs, upmin = values.split("days")[1].split(":")
+                    elif "day" in values:
+                        updays = 1
+                        uphrs, upmin = values.split("day")[1].split(":")
+                    else:
+                        uphrs, upmin = values.split(":")
+                    updays = int(updays)
+                    uphrs = int(uphrs)
+                    upmin = int(upmin)
+                    upall = (updays * 1440) + (uphrs * 60) + upmin
+                    cluster_data['nodes'][node_name]['sysstats']['uptime'] = upall
+
         # cpuinfo
         cpu_info, found = _get_sysstats_section(msg, filedata, "cat /proc/cpuinfo")
         cluster_data['nodes'][node_name]['sysstats']['cpu'] = { 'count': 0 }
@@ -766,12 +795,12 @@ def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
 
         # memory from top output
         top_info, found = _get_sysstats_section(msg, filedata, "top -b -n")
-        if found is True:
-            cluster_data['nodes'][node_name]['sysstats']['tasks'] = { 'total': -1, 'running': -1, 'sleeping': -1, 'stopped': -1, 'zombie': -1 }
-            cluster_data['nodes'][node_name]['sysstats']['cpu'].update({'user': -1.0, 'system': -1.0, 'nice': -1.0, 'idle': -1.0, 'wait': -1.0, 'hard_int': -1.0, 'soft_int': -1.0, 'steal_time': -1.0})
-            cluster_data['nodes'][node_name]['sysstats']['mem'] = { 'total': -1, 'used': -1, 'avail': -1, 'avail_percent': -1 }
-            cluster_data['nodes'][node_name]['sysstats']['swap'] = { 'total': -1, 'used': -1 }
+        cluster_data['nodes'][node_name]['sysstats']['tasks'].update({'total': -1, 'running': -1, 'sleeping': -1, 'stopped': -1, 'zombie': -1})
+        cluster_data['nodes'][node_name]['sysstats']['cpu'].update({'user': -1.0, 'system': -1.0, 'nice': -1.0, 'idle': -1.0, 'wait': -1.0, 'hard_int': -1.0, 'soft_int': -1.0, 'steal_time': -1.0})
+        cluster_data['nodes'][node_name]['sysstats']['mem'] = { 'total': -1, 'used': -1, 'avail': -1, 'avail_percent': -1 }
+        cluster_data['nodes'][node_name]['sysstats']['swap'] = { 'total': -1, 'used': -1 }
 
+        if found is True:
             for entry in top_info:
                 if entry.startswith("Tasks:"):
                     value = entry.split()
