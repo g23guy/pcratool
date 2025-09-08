@@ -1645,6 +1645,10 @@ def _create_reports_path(msg, data):
     return
 
 def synchronize_log_files(msg, report_data):
+    msg.min("Sychronizing Log Files...")
+    EX_OK = 0
+    EX_IDXERR = 3
+    EX_VALUERR = 4
     log_files = [
 #       ['log_file', 'date format', 'date extraction method', 'trim amount on the right']
         ['pacemaker.log', '%b %d %H:%M:%S.%f', 2, -3],
@@ -1656,21 +1660,24 @@ def synchronize_log_files(msg, report_data):
     ]
 
     def _parse_log_line(line, t_fmt, t_now, t_max, method):
+        EX_OK = 0
+        EX_IDXERR = 3
+        EX_VALUERR = 4
         try:
             # Attempt to parse the timestamp from the beginning of the line
             if method == 1:
                 try:
                     timestamp_str = line.split()[0]
                 except IndexError:
-                    return -1, ("", "")
+                    return EX_IDXERR, -1, ("", "")
             elif method == 2:
                 timestamp_str = line[:len(t_now)]
             timestamp = dt.strptime(timestamp_str, t_fmt)
-            return 0, (timestamp, line)
+            return EX_OK, 0, (timestamp, line)
         except ValueError:
             # If timestamp parsing fails, treat it as a non-timestamped line
             # and place it at the end of the sorted output (or handle as needed)
-            return 1, (t_max, line) # Puts non-timestamped lines last
+            return EX_VALUERR, 1, (t_max, line) # Puts non-timestamped lines last
 
     for log_file, t_fmt, method, t_rtrim in log_files:
         f_names = []
@@ -1692,31 +1699,42 @@ def synchronize_log_files(msg, report_data):
             msg.verbose("Sychronizing", log_file)
             msg.debug("synchronize_log_files", "t_now={}, len={}, extraction method {}".format(t_now, len(t_now), method))
             t_parse_exceptions = 0
+            empty_file = False
             for f_path in f_names:
                 # Read and parse lines from the each file in f_names
+                _rc = EX_OK
+                len_before = len(all_lines)
                 with open(f_path, 'r') as f:
                     msg.debug("> parse", f_path)
                     for line in f:
-                        exception, _line_parts = _parse_log_line(line.strip(), t_fmt, t_now, t_max, method)
-                        if exception < 0:
-                            t_parse_exceptions = exception
+                        line = line.strip()
+                        _rc, exception, _line_parts = _parse_log_line(line, t_fmt, t_now, t_max, method)
+                        if _rc == EX_IDXERR:
                             break
                         t_parse_exceptions += exception
                         all_lines.append(_line_parts)
-                if t_parse_exceptions < 0 or t_parse_exceptions == len(all_lines):
+                len_after = len(all_lines)
+                if len_before == len_after:
+                    empty_file = True
+
+                if _rc == EX_IDXERR:
+                    break
+                elif len_after > 0 and t_parse_exceptions == len_after:
                     break
 
             # Sort all log entries by their parsed timestamps
             msg.debug(">", "all_lines={}, t_parse_exceptions={}".format(len(all_lines), t_parse_exceptions))
-            if t_parse_exceptions < 0:
+            if _rc == EX_IDXERR:
                 msg.verbose(" Warning", "{} could not be combined, IndexError".format(log_file))
             elif t_parse_exceptions < len(all_lines):
                 all_lines.sort(key=lambda x: x[0])
                 f_combined_path = report_data['source_data']['dirpath_reports'] + "/combined." + log_file
                 with open(f_combined_path, 'w') as outfile:
-                    msg.min("Sychronized Log File", f_combined_path)
+                    msg.min("Combined Log File", f_combined_path)
                     for timestamp, line in all_lines:
                         outfile.write(line + '\n')
+                    if empty_file is True:
+                        msg.min(" Note", "One or more files were empty")
             else:
                 msg.verbose(" Warning", "{} could not be sorted, invalid time format".format(log_file))
         else:
