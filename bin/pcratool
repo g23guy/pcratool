@@ -34,7 +34,8 @@ import sys
 import json
 import signal
 import shutil
-import datetime
+import fileinput
+from datetime import datetime as dt, timezone as tz
 import socket
 import getopt
 import smtplib
@@ -1643,19 +1644,97 @@ def _create_reports_path(msg, data):
 
     return
 
-def analyze_cluster(msg, data):
-#    print()
-#    pprint.pprint(data, indent=4)
+def synchronize_log_files(msg, report_data):
+    log_files = [
+#       ['log_file', 'date format', 'date extraction method', 'trim amount on the right']
+        ['pacemaker.log', '%b %d %H:%M:%S.%f', 2, -3],
+        ['corosync.log', '%b %d %H:%M:%S', 1, 0],
+        ['journal_corosync.log', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
+        ['journal_pacemaker.log', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
+        ['journal_sbd.log', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
+        ['ha-log.txt', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
+    ]
 
-    report_file = data['source_data']['dirpath_reports'] + "/report_data.json"
+    def _parse_log_line(line, t_fmt, t_now, t_max, method):
+        try:
+            # Attempt to parse the timestamp from the beginning of the line
+            if method == 1:
+                try:
+                    timestamp_str = line.split()[0]
+                except IndexError:
+                    return -1, ("", "")
+            elif method == 2:
+                timestamp_str = line[:len(t_now)]
+            timestamp = dt.strptime(timestamp_str, t_fmt)
+            return 0, (timestamp, line)
+        except ValueError:
+            # If timestamp parsing fails, treat it as a non-timestamped line
+            # and place it at the end of the sorted output (or handle as needed)
+            return 1, (t_max, line) # Puts non-timestamped lines last
+
+    for log_file, t_fmt, method, t_rtrim in log_files:
+        f_names = []
+        all_lines = []
+        t_now = dt.now(tz.utc).strftime(t_fmt)
+        if "%z" in t_fmt:
+            t_max = dt.max.replace(tzinfo=tz.utc)
+        else:
+            t_max = dt.max
+        if t_rtrim != 0:
+            t_now = t_now[:t_rtrim]
+        subfolders = [ f.path for f in os.scandir(report_data['source_data']['dirpath_data_source']) if f.is_dir() ]
+        for dirpath in subfolders:
+            f_path = dirpath + "/" + log_file
+            if os.path.exists(f_path):
+                f_names.append(f_path)
+
+        if len(f_names) > 0:
+            msg.verbose("Sychronizing", log_file)
+            msg.debug("synchronize_log_files", "t_now={}, len={}, extraction method {}".format(t_now, len(t_now), method))
+            t_parse_exceptions = 0
+            for f_path in f_names:
+                # Read and parse lines from the each file in f_names
+                with open(f_path, 'r') as f:
+                    msg.debug("> parse", f_path)
+                    for line in f:
+                        exception, _line_parts = _parse_log_line(line.strip(), t_fmt, t_now, t_max, method)
+                        if exception < 0:
+                            t_parse_exceptions = exception
+                            break
+                        t_parse_exceptions += exception
+                        all_lines.append(_line_parts)
+                if t_parse_exceptions < 0 or t_parse_exceptions == len(all_lines):
+                    break
+
+            # Sort all log entries by their parsed timestamps
+            msg.debug(">", "all_lines={}, t_parse_exceptions={}".format(len(all_lines), t_parse_exceptions))
+            if t_parse_exceptions < 0:
+                msg.verbose(" Warning", "{} could not be combined, IndexError".format(log_file))
+            elif t_parse_exceptions < len(all_lines):
+                all_lines.sort(key=lambda x: x[0])
+                f_combined_path = report_data['source_data']['dirpath_reports'] + "/combined." + log_file
+                with open(f_combined_path, 'w') as outfile:
+                    msg.min("Sychronized Log File", f_combined_path)
+                    for timestamp, line in all_lines:
+                        outfile.write(line + '\n')
+            else:
+                msg.verbose(" Warning", "{} could not be sorted, invalid time format".format(log_file))
+        else:
+            msg.debug("Warning", "No {} files found".format(log_file))
+
+
+def analyze_cluster(msg, report_data):
+    report_file = report_data['source_data']['dirpath_reports'] + "/report_data.json"
     try:
         with open(report_file, "w") as f:
-            json.dump(data, f, indent = 4)
+            json.dump(report_data, f, indent = 4)
     except Exception as e:
         msg.min(" ERROR:", "Cannot write {} file - {}".format(report_file, str(e)))
         sys.exit(13)
     msg.min("Cluster Report Data File", report_file)
 
+    if report_data['source_data']['combine_logs'] is True:
+        synchronize_log_files(msg, report_data)
 
 ##############################################################################
 # Main
@@ -1673,6 +1752,7 @@ def main(argv):
     remove_archive = False
     remove_extracted_directory = True
     pattern_library = False
+    combine_logs = True
     given_type = ''
     given_report_output_path = {}
     given_extract_path = {}
@@ -1698,7 +1778,7 @@ def main(argv):
     os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path + 'python')
 
     try:
-        (optlist, args) = getopt.gnu_getopt(argv[1:], "hbdkno:pl:qrvx:", ["help", "batch", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "verbose", "dirpath_extract_here="])
+        (optlist, args) = getopt.gnu_getopt(argv[1:], "hbcdkno:pl:qrvx:", ["help", "batch", "dont_combine", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "verbose", "dirpath_extract_here="])
     except getopt.GetoptError as exc:
         title()
         print("Error:", exc, file=sys.stderr)
@@ -1712,6 +1792,8 @@ def main(argv):
             sys.exit(0)
         elif opt in {"-b", "--batch"}:
             progress_bar_active = False
+        elif opt in {"-c", "--dont_combine"}:
+            combine_logs = False
         elif opt in {"-d", "--debug"}:
             msg.set_level(msg.LOG_DEBUG)
             remove_extracted_directory = False
@@ -1757,6 +1839,7 @@ def main(argv):
             this_file_data['extract_here_for_reports'] = False
             this_file_data['remove_tarball'] = False
             this_file_data['remove_directory'] = False
+            this_file_data['combine_logs'] = combine_logs
             
             if this_file_data['exists']:
                 count += 1
