@@ -35,7 +35,7 @@ import json
 import signal
 import shutil
 import fileinput
-from datetime import datetime as dt, timezone as tz
+from datetime import datetime as dt
 import socket
 import getopt
 import smtplib
