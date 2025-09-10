@@ -1648,28 +1648,24 @@ def synchronize_log_files(msg, report_data):
     msg.min("Sychronizing Log Files...")
     EX_OK = 0
     EX_IDXERR = 3
-    EX_VALUERR = 4
     log_files = [
 #       ['log_file', 'date format', 'date extraction method', 'trim amount on the right']
         ['pacemaker.log', '%b %d %H:%M:%S.%f', 2, -3],
-        ['corosync.log', '%b %d %H:%M:%S', 1, 0],
-        ['journal_corosync.log', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
-        ['journal_pacemaker.log', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
-        ['journal_sbd.log', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
-        ['ha-log.txt', '%Y-%m-%dT%H:%M:%S.%f%z', 1, 0],
+        ['corosync.log', '%b %d %H:%M:%S', 2, 0],
+        ['journal_corosync.log', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
+        ['journal_pacemaker.log', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
+        ['journal_sbd.log', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
+        ['ha-log.txt', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
     ]
+    f_names = []
 
     def _parse_log_line(line, t_fmt, t_now, t_max, method):
         EX_OK = 0
         EX_IDXERR = 3
-        EX_VALUERR = 4
         try:
             # Attempt to parse the timestamp from the beginning of the line
             if method == 1:
-                try:
-                    timestamp_str = line.split()[0]
-                except IndexError:
-                    return EX_IDXERR, -1, ("", "")
+                timestamp_str = line[:26]
             elif method == 2:
                 timestamp_str = line[:len(t_now)]
             timestamp = dt.strptime(timestamp_str, t_fmt)
@@ -1677,16 +1673,15 @@ def synchronize_log_files(msg, report_data):
         except ValueError:
             # If timestamp parsing fails, treat it as a non-timestamped line
             # and place it at the end of the sorted output (or handle as needed)
-            return EX_VALUERR, 1, (t_max, line) # Puts non-timestamped lines last
+            return EX_OK, 1, (t_max, line) # Puts non-timestamped lines last
+
+
 
     for log_file, t_fmt, method, t_rtrim in log_files:
         f_names = []
         all_lines = []
-        t_now = dt.now(tz.utc).strftime(t_fmt)
-        if "%z" in t_fmt:
-            t_max = dt.max.replace(tzinfo=tz.utc)
-        else:
-            t_max = dt.max
+        t_now = dt.now().strftime(t_fmt)
+        t_max = dt.max
         if t_rtrim != 0:
             t_now = t_now[:t_rtrim]
         subfolders = [ f.path for f in os.scandir(report_data['source_data']['dirpath_data_source']) if f.is_dir() ]
@@ -1717,10 +1712,12 @@ def synchronize_log_files(msg, report_data):
                 if len_before == len_after:
                     empty_file = True
 
+                msg.debug(">", "len_before={}, len_after={}, _rc={}".format(len_before, len_after, _rc))
                 if _rc == EX_IDXERR:
                     break
                 elif len_after > 0 and t_parse_exceptions == len_after:
                     break
+                
 
             # Sort all log entries by their parsed timestamps
             msg.debug(">", "all_lines={}, t_parse_exceptions={}".format(len(all_lines), t_parse_exceptions))
