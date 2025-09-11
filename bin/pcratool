@@ -1647,7 +1647,6 @@ def _create_reports_path(msg, data):
 def synchronize_log_files(msg, report_data):
     msg.min("Sychronizing Log Files...")
     EX_OK = 0
-    EX_IDXERR = 3
     log_files = [
 #       ['log_file', 'date format', 'date extraction method', 'trim amount on the right']
         ['pacemaker.log', '%b %d %H:%M:%S.%f', 2, -3],
@@ -1661,7 +1660,6 @@ def synchronize_log_files(msg, report_data):
 
     def _parse_log_line(line, t_fmt, t_now, t_max, method):
         EX_OK = 0
-        EX_IDXERR = 3
         try:
             # Attempt to parse the timestamp from the beginning of the line
             if method == 1:
@@ -1691,7 +1689,8 @@ def synchronize_log_files(msg, report_data):
                 f_names.append(f_path)
 
         if len(f_names) > 0:
-            msg.verbose("Sychronizing", log_file)
+            f_combined_path = report_data['source_data']['dirpath_reports'] + "/combined." + log_file
+            msg.min("Combining Log File", f_combined_path)
             msg.debug("synchronize_log_files", "t_now={}, len={}, extraction method {}".format(t_now, len(t_now), method))
             t_parse_exceptions = 0
             empty_file = False
@@ -1704,8 +1703,6 @@ def synchronize_log_files(msg, report_data):
                     for line in f:
                         line = line.strip()
                         _rc, exception, _line_parts = _parse_log_line(line, t_fmt, t_now, t_max, method)
-                        if _rc == EX_IDXERR:
-                            break
                         t_parse_exceptions += exception
                         all_lines.append(_line_parts)
                 len_after = len(all_lines)
@@ -1713,27 +1710,21 @@ def synchronize_log_files(msg, report_data):
                     empty_file = True
 
                 msg.debug(">", "len_before={}, len_after={}, _rc={}".format(len_before, len_after, _rc))
-                if _rc == EX_IDXERR:
-                    break
-                elif len_after > 0 and t_parse_exceptions == len_after:
+                if len_after > 0 and t_parse_exceptions == len_after:
                     break
                 
 
             # Sort all log entries by their parsed timestamps
             msg.debug(">", "all_lines={}, t_parse_exceptions={}".format(len(all_lines), t_parse_exceptions))
-            if _rc == EX_IDXERR:
-                msg.verbose(" Warning", "{} could not be combined, IndexError".format(log_file))
-            elif t_parse_exceptions < len(all_lines):
+            if t_parse_exceptions < len(all_lines):
                 all_lines.sort(key=lambda x: x[0])
-                f_combined_path = report_data['source_data']['dirpath_reports'] + "/combined." + log_file
                 with open(f_combined_path, 'w') as outfile:
-                    msg.min("Combined Log File", f_combined_path)
                     for timestamp, line in all_lines:
                         outfile.write(line + '\n')
                     if empty_file is True:
-                        msg.min(" Note", "One or more files were empty")
+                        msg.min(" Note", "One or more {} files were empty".format(log_file))
             else:
-                msg.verbose(" Warning", "{} could not be sorted, invalid time format".format(log_file))
+                msg.min(" Skipping", "{} could not be sorted, invalid time format".format(log_file))
         else:
             msg.debug("Warning", "No {} files found".format(log_file))
 
