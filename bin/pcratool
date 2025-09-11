@@ -1,12 +1,12 @@
 #!/usr/bin/python3
-SVER = '0.0.3-dev'
+SVER = '0.0.5-dev'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
 # Copyright (c) 2025 SUSE LLC
 #
 # Description:  Analyzes HB report archives for known issues
-# Modified:     2025 Aug 19
+# Modified:     2025 Sep 12
 #
 ##############################################################################
 #
@@ -1724,7 +1724,7 @@ def synchronize_log_files(msg, report_data):
                     if empty_file is True:
                         msg.min(" Note", "One or more {} files were empty".format(log_file))
             else:
-                msg.min(" Skipping", "{} could not be sorted, invalid time format".format(log_file))
+                msg.min(" Skipping", "{} could not be sorted, unexpected time format".format(log_file))
         else:
             msg.debug("Warning", "No {} files found".format(log_file))
 
