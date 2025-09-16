@@ -1647,84 +1647,153 @@ def _create_reports_path(msg, data):
 def synchronize_log_files(msg, report_data):
     msg.min("Sychronizing Log Files...")
     EX_OK = 0
-    log_files = [
-#       ['log_file', 'date format', 'date extraction method', 'trim amount on the right']
-        ['pacemaker.log', '%b %d %H:%M:%S.%f', 2, -3],
-        ['corosync.log', '%b %d %H:%M:%S', 2, 0],
-        ['journal_corosync.log', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
-        ['journal_pacemaker.log', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
-        ['journal_sbd.log', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
-        ['ha-log.txt', '%Y-%m-%dT%H:%M:%S.%f', 1, 0],
+    MAX_HEADER_LINES = 50
+    date_formats = [
+    #   List of all possible log file data formats
+    #   ['date format', string trim amount left to right, unless negative which if right to left],
+        [],
+        ['%Y-%m-%dT%H:%M:%S.%f', 26],
+        ['%b %d %H:%M:%S.%f', 19],
+        ['%b %d %H:%M:%S', 15],
     ]
+    log_files = {
+    #   The date format to use for each log file and the preferred order to test which is used
+    #   'log file': [list of indeces to possible date_formats],
+        'pacemaker.log': [2, 3, 1],
+        'corosync.log': [3, 2, 1],
+        'journal_corosync.log': [1, 2, 3],
+        'journal_pacemaker.log': [1, 2, 3],
+        'journal_sbd.log': [1, 2, 3],
+        'ha-log.txt': [1, 2, 3],
+    }
     f_names = []
 
-    def _parse_log_line(line, t_fmt, t_now, t_max, method):
+    def _get_date_format(f_path, date_formats, eval_order):
+        header_lines = []
+        date_info = []
+        idx_date = 0
+        empty = 0
+        len_fnames = 0
+
+        # Read the first MAX_HEADER_LINES header_lines to determine the date format from the f_path given
+        with open(f_path, 'r') as f:
+            msg.debug("_get_date_format", f_path)
+            line_count = 0
+            for line in f:
+                line_count += 1
+                header_lines.append(line.strip())
+                if line_count > MAX_HEADER_LINES:
+                    break
+        if header_lines:
+            for i in eval_order:
+                msg.debug("> attempt", date_formats[i])
+                if date_formats[i]:
+                    tmp_fmt = date_formats[i][0]
+                    tmp_trim = date_formats[i][1]
+
+                    tmp_now = dt.now().strftime(tmp_fmt)
+                    if tmp_trim != 0:
+                        tmp_now = tmp_now[:tmp_trim]
+
+                    for line in header_lines:
+                        dummy, exception, dummy = _parse_log_line(line, date_formats[i])
+                        if exception == 0:
+                            idx_date = i
+                            date_info = date_formats[i]
+                            break
+                if idx_date > 0:
+                    break
+
+            msg.debug("> use", "idx_date={}, header_lines={}, date_info={}".format(idx_date, len(header_lines), date_info))
+        else:
+            empty = 1
+            msg.debug("> emtpy", "idx_date={}, empty_file={}".format(idx_date, empty))
+
+        return empty, idx_date
+
+    def _parse_log_line(line, date_info):
         EX_OK = 0
+        t_fmt = date_info[0]
+        t_trim = date_info[1]
         try:
             # Attempt to parse the timestamp from the beginning of the line
-            if method == 1:
-                timestamp_str = line[:26]
-            elif method == 2:
-                timestamp_str = line[:len(t_now)]
+            timestamp_str = line[:t_trim]
             timestamp = dt.strptime(timestamp_str, t_fmt)
             return EX_OK, 0, (timestamp, line)
         except ValueError:
             # If timestamp parsing fails, treat it as a non-timestamped line
             # and place it at the end of the sorted output (or handle as needed)
-            return EX_OK, 1, (t_max, line) # Puts non-timestamped lines last
+            return EX_OK, 1, (dt.max, line) # Puts non-timestamped lines last
 
-
-
-    for log_file, t_fmt, method, t_rtrim in log_files:
+    for log_file in log_files.keys():
         f_names = []
         all_lines = []
-        t_now = dt.now().strftime(t_fmt)
-        t_max = dt.max
-        if t_rtrim != 0:
-            t_now = t_now[:t_rtrim]
         subfolders = [ f.path for f in os.scandir(report_data['source_data']['dirpath_data_source']) if f.is_dir() ]
         for dirpath in subfolders:
             f_path = dirpath + "/" + log_file
             if os.path.exists(f_path):
                 f_names.append(f_path)
+        len_f_names = len(f_names)
 
-        if len(f_names) > 0:
+        if len_f_names > 0:
+            combined_notes = []
             f_combined_path = report_data['source_data']['dirpath_reports'] + "/combined." + log_file
-            msg.min("Combining Log File", f_combined_path)
-            msg.debug("synchronize_log_files", "t_now={}, len={}, extraction method {}".format(t_now, len(t_now), method))
+            msg.min("Combining {} File(s)".format(len_f_names), f_combined_path)
             t_parse_exceptions = 0
-            empty_file = False
+            empty_files = 0
+            unsorted_files = 0
             for f_path in f_names:
+                empty, idx_date = _get_date_format(f_path, date_formats, log_files[log_file])
+                combined_notes.append("{}: {}".format(date_formats[idx_date], f_path))
+                if empty > 0:
+                    msg.verbose(" Empty file", f_path)
+                    combined_notes.append(" Empty file")
+                    empty_files += 1
+                    continue
+                elif idx_date == 0:
+                    msg.verbose(" Skipping", f_path)
+                    combined_notes.append(" Skipped file, missing known date_formats")
+                    unsorted_files += 1
+                    continue
+                
                 # Read and parse lines from the each file in f_names
                 _rc = EX_OK
                 len_before = len(all_lines)
                 with open(f_path, 'r') as f:
-                    msg.debug("> parse", f_path)
+                    msg.debug("> parse", log_file)
                     for line in f:
                         line = line.strip()
-                        _rc, exception, _line_parts = _parse_log_line(line, t_fmt, t_now, t_max, method)
+                        _rc, exception, _line_parts = _parse_log_line(line, date_formats[idx_date])
                         t_parse_exceptions += exception
                         all_lines.append(_line_parts)
                 len_after = len(all_lines)
-                if len_before == len_after:
-                    empty_file = True
 
                 msg.debug(">", "len_before={}, len_after={}, _rc={}".format(len_before, len_after, _rc))
                 if len_after > 0 and t_parse_exceptions == len_after:
                     break
                 
 
+            msg.debug(">", "all_lines={}, t_parse_exceptions={}, empty_files={}, unsorted_files={}, total files={}".format(len(all_lines), t_parse_exceptions, empty_files, unsorted_files, len_f_names))
+            with open(f_combined_path, 'w') as outfile:
+                for line in combined_notes:
+                    outfile.write(line + '\n')
+                outfile.write('\n\n')
+
+            if empty_files == len_f_names:
+                msg.min(" Warning", "All {} files were empty".format(log_file))
+            elif empty_files > 0:
+                msg.min(" Note", "{} of {} {} files were empty".format(empty_files, len_f_names, log_file))
+            if unsorted_files == len_f_names:
+                msg.min(" Skipping", "All {} files could not be sorted, unexpected time format".format(log_file))
+            elif unsorted_files > 0:
+                msg.min(" Note", "{} of {} {} files could not be sorted and were skipped, unexpected time format".format(unsorted_files, len_f_names, log_file))
+
             # Sort all log entries by their parsed timestamps
-            msg.debug(">", "all_lines={}, t_parse_exceptions={}".format(len(all_lines), t_parse_exceptions))
-            if t_parse_exceptions < len(all_lines):
+            if all_lines:
                 all_lines.sort(key=lambda x: x[0])
-                with open(f_combined_path, 'w') as outfile:
+                with open(f_combined_path, 'a') as outfile:
                     for timestamp, line in all_lines:
                         outfile.write(line + '\n')
-                    if empty_file is True:
-                        msg.min(" Note", "One or more {} files were empty".format(log_file))
-            else:
-                msg.min(" Skipping", "{} could not be sorted, unexpected time format".format(log_file))
         else:
             msg.debug("Warning", "No {} files found".format(log_file))
 
@@ -1762,6 +1831,8 @@ def main(argv):
     given_type = ''
     given_report_output_path = {}
     given_extract_path = {}
+    extract_path = ''
+    report_output_path = ''
 
     if( os.path.exists(config_file) ):
         config.read(config_file)
