@@ -1647,7 +1647,7 @@ def _create_reports_path(msg, data):
 def synchronize_log_files(msg, report_data):
     msg.min("Sychronizing Log Files...")
     EX_OK = 0
-    MAX_HEADER_LINES = 50
+    MAX_HEADER_LINES = 100
     date_formats = [
     #   List of all possible log file data formats
     #   ['date format', string trim amount left to right, unless negative which if right to left],
