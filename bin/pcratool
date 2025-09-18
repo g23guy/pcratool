@@ -467,7 +467,7 @@ def check_report_path_given(msg, config_file, report_path_cmd, report_path_confi
     return path_data
 
 def _write_diff_file(filename, filepath, diff_content):
-    msg.debug("_write_diff_file: File", filepath)
+    msg.min(" Differences Data File", filepath)
     try:
         with open(filepath, "w") as f:
             for line in diff_content:
@@ -499,6 +499,7 @@ def _get_cluster_basics(msg, file_data, cluster_data):
                 msg.debug("> get hb_report_by", cluster_data['hb_report_by'])
 
     ##### analysis.txt
+    msg.min("Evalutating Analysis", "Differences")
     filename = "analysis.txt"
     msg.debug("_get_cluster_basics: File", filename)
     filepath = file_data['dirpath_data_source'] + "/" + filename
@@ -1645,7 +1646,7 @@ def _create_reports_path(msg, data):
     return
 
 def synchronize_log_files(msg, report_data):
-    msg.min("Sychronizing Log Files...")
+    msg.min("Log Files", "Combining and Sorting")
     EX_OK = 0
     MAX_HEADER_LINES = 100
     date_formats = [
@@ -1738,7 +1739,7 @@ def synchronize_log_files(msg, report_data):
         if len_f_names > 0:
             combined_notes = []
             f_combined_path = report_data['source_data']['dirpath_reports'] + "/combined." + log_file
-            msg.min("Combining {} File(s)".format(len_f_names), f_combined_path)
+            msg.min(" Combining {} File(s)".format(len_f_names), f_combined_path)
             t_parse_exceptions = 0
             empty_files = 0
             unsorted_files = 0
