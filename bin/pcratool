@@ -1036,9 +1036,10 @@ def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
         msg.verbose(" Missing {}".format(filename), "{}".format(str(e)))
         filedata = ""
 
+    print("BEFORE: Cluster data for node:", node_name)
+    pprint.pprint(cluster_data)
+    print('-'*80)
     cib_data = {}
-    if cluster_data.get("cib") is None:
-        cluster_data["cib"] = {}
 
     if xdom:
         cib_element = xdom.getElementsByTagName("cib")[0]
@@ -1295,12 +1296,17 @@ def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
                         nv_value = nv.getAttribute("value")
                         cib_data["op_defaults"][op_defaults_id][nv_name] = nv_value
 
-
-
-
+    if cluster_data.get("cib") is None:
+        cluster_data["cib"] = cib_data
+    if cluster_data.get('insync_cib_xml') is False:
+        if cluster_data['nodes'].get(node_name) is None:
+            print(f"Node {node_name} not found in cluster_data['nodes'], creating entry.")
+            cluster_data['nodes'][node_name] = {}
+        cluster_data['nodes'][node_name]['cib'] = cib_data
     pprint.pprint(cib_data, indent=4)
-    quit()
+    print('-' * 80)
     pprint.pprint(cluster_data)
+    print("Node: ", node_name)
     return cluster_data
 
 def _parse_cib_xml_node_state(msg, dirpath, node_name, cluster_data):
@@ -1391,8 +1397,14 @@ def _get_nodes_cluster_cib(msg, file_data, cluster_data):
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
         msg.verbose("Processing cluster CIB info", "from {} node directory".format(node_name))
+<<<<<<< HEAD
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
+=======
+        if node_name in cluster_data['nodes']:
+            if  cluster_data['nodes'][node_name] is None:
+                cluster_data['nodes'][node_name] = {}
+>>>>>>> 37ac33d (Cleaned up _parse_cib function)
             msg.debug("_get_nodes_cluster_cib:", "Added {} from {}".format(node_name, "directory"))
             cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
 
