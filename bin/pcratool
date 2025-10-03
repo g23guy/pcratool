@@ -1394,14 +1394,8 @@ def _get_nodes_cluster_cib(msg, file_data, cluster_data):
     for node_data_source in subfolders:
         node_name = os.path.basename(node_data_source)
         msg.verbose("Processing cluster CIB info", "from {} node directory".format(node_name))
-<<<<<<< HEAD
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
-=======
-        if node_name in cluster_data['nodes']:
-            if  cluster_data['nodes'][node_name] is None:
-                cluster_data['nodes'][node_name] = {}
->>>>>>> 37ac33d (Cleaned up _parse_cib function)
             msg.debug("_get_nodes_cluster_cib:", "Added {} from {}".format(node_name, "directory"))
             cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
 
