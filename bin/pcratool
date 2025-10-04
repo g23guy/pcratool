@@ -1928,38 +1928,7 @@ def main(argv):
                 else:
                     msg.min("Processing", this_file_data['path'])
 
-                if this_file_data['type'] == 'dir':
-                    this_file_data['remove_directory'] = remove_archive
-                    if valid_archive_dir(msg, this_file_data['path']):
-                        this_file_data['valid'] = True
-                        this_file_data['dirpath_data_source'] = this_file_data['path']
-                        if preconfigured_report_path:
-                            this_file_data['dirpath_reports'] = preconfigured_report_path['path']
-                        else:
-                            if this_file_data['head_write']:    
-                                this_file_data['dirpath_reports'] = this_file_data['path'] + "_reports"
-                            else:
-                                msg.min(" ", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
-                                msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
-                                separate_entry(msg, total_args_given)
-                                continue
-                        this_file_data['dirpath_data_source'] = this_file_data['path']
-                        _create_reports_path(msg, this_file_data)
-                        report_data['source_data'] = this_file_data
-                        this_cluster_data = get_cluster_data(msg, this_file_data)
-                        report_data['cluster'] = this_cluster_data
-                        save_report_data(msg, report_data)
-                        if report_data['source_data']['combine_logs'] is True:
-                            synchronize_log_files(msg, report_data)
-                        cluster = pca.PacemakerClusterAnalysis(msg, report_data)
-                        cluster.analyze()
-                        cluster.save_results()
-                    else:
-                        this_file_data['valid'] = False
-                        report_data['source_data'] = this_file_data
-                    separate_entry(msg, total_args_given)
-
-                elif this_file_data['type'] == 'file':
+                if this_file_data['type'] == 'file':
                     if not this_file_data['tail_mime_type'] in VALID_MIME_TYPES:
                         msg.min(" Missing file", "Not an HB report compressed file - {0}".format(this_file_data['path']))
                         separate_entry(msg, total_args_given)
@@ -1998,20 +1967,31 @@ def main(argv):
                                     msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
                                     separate_entry(msg, total_args_given)
                                     continue
-                        _create_reports_path(msg, this_file_data)
                         report_data['source_data'] = this_file_data
-                        this_cluster_data = get_cluster_data(msg, this_file_data)
-                        report_data['cluster'] = this_cluster_data
-                        save_report_data(msg, report_data)
-                        if report_data['source_data']['combine_logs'] is True:
-                            synchronize_log_files(msg, report_data)
-                        cluster = pca.PacemakerClusterAnalysis(msg, report_data)
-                        cluster.analyze()
-                        cluster.save_results()
                     else:
                         this_file_data['valid'] = False
                         report_data['source_data'] = this_file_data
-                    separate_entry(msg, total_args_given)
+
+                elif this_file_data['type'] == 'dir':
+                    this_file_data['remove_directory'] = remove_archive
+                    if valid_archive_dir(msg, this_file_data['path']):
+                        this_file_data['valid'] = True
+                        this_file_data['dirpath_data_source'] = this_file_data['path']
+                        if preconfigured_report_path:
+                            this_file_data['dirpath_reports'] = preconfigured_report_path['path']
+                        else:
+                            if this_file_data['head_write']:    
+                                this_file_data['dirpath_reports'] = this_file_data['path'] + "_reports"
+                            else:
+                                msg.min(" ", "Write permisson denied, cannot create report file in {0}".format(this_file_data['head']))
+                                msg.min(" * Suggestion", "Use -o, --output to specify an alternate report file directory")
+                                separate_entry(msg, total_args_given)
+                                continue
+                        this_file_data['dirpath_data_source'] = this_file_data['path']
+                        report_data['source_data'] = this_file_data
+                    else:
+                        this_file_data['valid'] = False
+                        report_data['source_data'] = this_file_data
 
                 elif not this_file_data['tail_read']:
                     msg.min(" ERROR:", "Read permisson denied - {0}".format(this_file_data['path']))
@@ -2022,7 +2002,20 @@ def main(argv):
                     msg.min(" ERROR:", "Unknown file type - {0}".format(this_file_data['path']))
                     separate_entry(msg, total_args_given)
                     continue
-                clean_up(msg, report_data)
+
+                if report_data['source_data']['valid']:
+                    _create_reports_path(msg, report_data['source_data'])
+                    this_cluster_data = get_cluster_data(msg, report_data['source_data'])
+                    report_data['cluster'] = this_cluster_data
+                    save_report_data(msg, report_data)
+                    if report_data['source_data']['combine_logs'] is True:
+                        synchronize_log_files(msg, report_data)
+                    cluster = pca.PacemakerClusterAnalysis(msg, report_data)
+                    cluster.analyze()
+                    cluster.save_results()
+                    clean_up(msg, report_data)
+                separate_entry(msg, total_args_given)
+
             else:
                 msg.min('Error: File or directory not found - {}'.format(given_source))
         msg.normal()
