@@ -1857,7 +1857,7 @@ def main(argv):
         print("Error: File not found - " + config_file + "\n")
         sys.exit(1)
 
-    os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path + 'python')
+    os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path)
 
     try:
         (optlist, args) = getopt.gnu_getopt(argv[1:], "hbcdkno:pl:qrvx:", ["help", "batch", "dont_combine", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "verbose", "dirpath_extract_here="])
