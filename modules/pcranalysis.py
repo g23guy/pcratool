@@ -70,7 +70,7 @@ class PacemakerClusterAnalysis():
         self.msg.verbose("Common Patterns", "Applying")
 
     def analyze(self):
-        self.msg.min("Analyzing Cluster Data")
+        self.msg.min("Cluster Data", "Analyzing")
         self.__apply_common_patterns()
 
 
