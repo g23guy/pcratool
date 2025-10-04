@@ -1,12 +1,12 @@
 #!/usr/bin/python3
-SVER = '0.0.5-dev'
+SVER = '0.0.6-dev'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
 # Copyright (c) 2025 SUSE LLC
 #
 # Description:  Analyzes HB report archives for known issues
-# Modified:     2025 Sep 12
+# Modified:     2025 Oct 01
 #
 ##############################################################################
 #
@@ -43,6 +43,7 @@ import subprocess
 import configparser
 import pprint # for debugging only, remove before release
 import xml.dom.minidom
+import pcranalysis as pca
 
 config_file = '/etc/pcratool/pcratool.conf'
 width = 0

@@ -17,12 +17,11 @@
 
 
 %define tool_common pcratool
-%define tool_config pcratool
-%define libbase /usr/lib/%{tool_common}
-%define tool_python %{libbase}/python
+%define tool_config %{tool_common}
+%define mod_base /usr/lib/%{tool_common}
 
 Name:           pcratool
-Version:        0.0.3
+Version:        0.0.5
 Release:        0
 Summary:        Supportconfig Analysis Server Report
 License:        GPL-3.0
@@ -47,9 +46,10 @@ pwd;ls -la
 install -d %{buildroot}%{_sysconfdir}/%{tool_config}
 install -d %{buildroot}%{_mandir}/man5
 install -d %{buildroot}%{_mandir}/man8
-install -d %{buildroot}%{tool_python}
+install -d %{buildroot}%{mod_base}
 mkdir -p %{buildroot}%{_bindir}
 install -m 755 bin/pcratool %{buildroot}%{_bindir}
+install -m 644 modules/* %{buildroot}%{mod_base}
 install -m 644 config/pcratool.conf %{buildroot}%{_sysconfdir}/%{tool_config}
 install -m 644 man/*.5.gz %{buildroot}%{_mandir}/man5
 install -m 644 man/*.8.gz %{buildroot}%{_mandir}/man8
@@ -57,6 +57,8 @@ install -m 644 man/*.8.gz %{buildroot}%{_mandir}/man8
 %files
 %defattr(-,root,root)
 %{_bindir}/pcratool
+%{mod_base}
+%{mod_base}/*
 %dir %{_sysconfdir}/%{tool_config}
 %config %{_sysconfdir}/%{tool_config}/*
 %doc %{_mandir}/man5/*
