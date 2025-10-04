@@ -43,13 +43,18 @@ import subprocess
 import configparser
 import pprint # for debugging only, remove before release
 import xml.dom.minidom
+
+
+tool_name = os.path.basename(__file__)
+mod_path = '/usr/lib/' + tool_name
+sys.path.append(mod_path)
+
 import pcranalysis as pca
 
-config_file = '/etc/pcratool/pcratool.conf'
+config_file = '/etc/' + tool_name + "/" + tool_name + ".conf"
 width = 0
 description_width = 0
 progress_bar_active = True
-tool_name = os.path.basename(__file__)
 
 def separator_line(use_char = '#'):
     print("{}".format(use_char*width))
@@ -500,7 +505,7 @@ def _get_cluster_basics(msg, file_data, cluster_data):
                 msg.debug("> get hb_report_by", cluster_data['hb_report_by'])
 
     ##### analysis.txt
-    msg.min("Evalutating Analysis", "Differences")
+    msg.min("Evalutating Analysis Files", "Differences")
     filename = "analysis.txt"
     msg.debug("_get_cluster_basics: File", filename)
     filepath = file_data['dirpath_data_source'] + "/" + filename
@@ -1802,8 +1807,7 @@ def synchronize_log_files(msg, report_data):
         else:
             msg.debug("Warning", "No {} files found".format(log_file))
 
-
-def analyze_cluster(msg, report_data):
+def save_report_data(msg, report_data):
     report_file = report_data['source_data']['dirpath_reports'] + "/report_data.json"
     try:
         with open(report_file, "w") as f:
@@ -1812,9 +1816,6 @@ def analyze_cluster(msg, report_data):
         msg.min(" ERROR:", "Cannot write {} file - {}".format(report_file, str(e)))
         sys.exit(13)
     msg.min("Cluster Report Data File", report_file)
-
-    if report_data['source_data']['combine_logs'] is True:
-        synchronize_log_files(msg, report_data)
 
 ##############################################################################
 # Main
@@ -1843,7 +1844,6 @@ def main(argv):
         config.read(config_file)
         width = int(config_entry(config.get("Common", "display_width")))
         description_width = int(config_entry(config.get("Common", "description_width")))
-        tool_library_path = config_entry(config.get("Common", "tool_library_path"), '/')
         extract_path = config_entry(config.get("Common", "extract_path"), '/')
         report_output_path = config_entry(config.get("Common", "report_output_path"), '/')
         msg.set_width(description_width)
@@ -1856,8 +1856,6 @@ def main(argv):
         title()
         print("Error: File not found - " + config_file + "\n")
         sys.exit(1)
-
-    os.environ['PYTHONPATH'] = os.path.abspath(tool_library_path)
 
     try:
         (optlist, args) = getopt.gnu_getopt(argv[1:], "hbcdkno:pl:qrvx:", ["help", "batch", "dont_combine", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "verbose", "dirpath_extract_here="])
@@ -1950,7 +1948,12 @@ def main(argv):
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster'] = this_cluster_data
-                        analyze_cluster(msg, report_data)
+                        save_report_data(msg, report_data)
+                        if report_data['source_data']['combine_logs'] is True:
+                            synchronize_log_files(msg, report_data)
+                        cluster = pca.PacemakerClusterAnalysis(msg, report_data)
+                        cluster.analyze()
+                        cluster.save_results()
                     else:
                         this_file_data['valid'] = False
                         report_data['source_data'] = this_file_data
@@ -1999,7 +2002,12 @@ def main(argv):
                         report_data['source_data'] = this_file_data
                         this_cluster_data = get_cluster_data(msg, this_file_data)
                         report_data['cluster'] = this_cluster_data
-                        analyze_cluster(msg, report_data)
+                        save_report_data(msg, report_data)
+                        if report_data['source_data']['combine_logs'] is True:
+                            synchronize_log_files(msg, report_data)
+                        cluster = pca.PacemakerClusterAnalysis(msg, report_data)
+                        cluster.analyze()
+                        cluster.save_results()
                     else:
                         this_file_data['valid'] = False
                         report_data['source_data'] = this_file_data
