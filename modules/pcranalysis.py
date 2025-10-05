@@ -46,9 +46,14 @@ class PacemakerClusterAnalysis():
     def __init__(self, msg, report_data):
         self.msg = msg
         self.report_data = report_data
-        self.analysis_data = {}
+        self.analysis_data = {
+            'timeAnalysis': '',
+            'results': {},
+        }
+        
         self.analysis_datetime = datetime.datetime.now()
         self.analysis_data['timeAnalysis'] = str(self.analysis_datetime.year) + "-" + str(self.analysis_datetime.month).zfill(2) + "-" + str(self.analysis_datetime.day).zfill(2) + " " + str(self.analysis_datetime.hour).zfill(2) + ":" + str(self.analysis_datetime.minute).zfill(2) + ":" + str(self.analysis_datetime.second).zfill(2)
+        self.common_patterns_total = 1
 
     def is_valid(self):
         return self.report_data['source_data']['valid']
@@ -66,11 +71,49 @@ class PacemakerClusterAnalysis():
             sys.exit(13)
         self.msg.min("Cluster Analysis Data File", report_file)
 
-    def __apply_common_patterns(self):
-        self.msg.verbose("Common Patterns", "Applying")
-
     def analyze(self):
         self.msg.min("Cluster Data", "Analyzing")
         self.__apply_common_patterns()
+
+    def __apply_common_patterns(self):
+        self.msg.normal("Common Patterns", "Applying")
+        patterns = {
+            self.__common_pattern_0: True,
+            self.__common_pattern_1: True,
+        }
+        count_total = len(patterns)
+        count_current = 0
+        for key, value in patterns.items():
+            count_current += 1
+            key()
+
+    def __common_pattern_0(self):
+        key = 'common_pattern_0'
+        result = {
+            'title': "Fencing Resource Required",
+            'product': 'HAE15ALL',
+            'component': 'Fencing',
+            'subcomponent': 'All',
+            'applicable': False,
+            'description': 'Clusters are supported when a stonith fencing resource is enabled.',
+            'kb_search_terms': "stonith resource not enabled",
+            'kb_search_results': {}
+        }
+        if self.report_data['cluster']['stonith']['enabled'] is False:
+            result['applicable'] = True
+        self.analysis_data['results'][key] = result
+
+    def __common_pattern_1(self):
+        key = 'common_pattern_1'
+        result = {
+            'title': "",
+            'product': '',
+            'component': '',
+            'subcomponent': '',
+            'applicable': False,
+            'description': '',
+            'kb_search_terms': "",
+            'kb_search_results': {}
+        }
 
 
