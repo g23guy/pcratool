@@ -53,7 +53,6 @@ class PacemakerClusterAnalysis():
         
         self.analysis_datetime = datetime.datetime.now()
         self.analysis_data['timeAnalysis'] = str(self.analysis_datetime.year) + "-" + str(self.analysis_datetime.month).zfill(2) + "-" + str(self.analysis_datetime.day).zfill(2) + " " + str(self.analysis_datetime.hour).zfill(2) + ":" + str(self.analysis_datetime.minute).zfill(2) + ":" + str(self.analysis_datetime.second).zfill(2)
-        self.common_patterns_total = 1
 
     def is_valid(self):
         return self.report_data['source_data']['valid']
@@ -81,39 +80,44 @@ class PacemakerClusterAnalysis():
             self.__common_pattern_0: True,
             self.__common_pattern_1: True,
         }
-        count_total = len(patterns)
-        count_current = 0
+        count = {
+            'total': len(patterns),
+            'current': 0,
+        }
         for key, value in patterns.items():
-            count_current += 1
-            key()
+            count['current'] += 1
+            key(count)
 
-    def __common_pattern_0(self):
+    def __common_pattern_0(self, count):
         key = 'common_pattern_0'
         result = {
             'title': "Fencing Resource Required",
-            'product': 'HAE15ALL',
+            'description': 'Clusters are supported when a stonith fencing resource is enabled.',
+            'product': '',
             'component': 'Fencing',
             'subcomponent': 'All',
             'applicable': False,
-            'description': 'Clusters are supported when a stonith fencing resource is enabled.',
-            'kb_search_terms': "stonith resource not enabled",
+            'kb_search_terms': "stonith resource not enabled unsupported",
             'kb_search_results': {}
         }
+        self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
         if self.report_data['cluster']['stonith']['enabled'] is False:
             result['applicable'] = True
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_1(self):
+    def __common_pattern_1(self, count):
         key = 'common_pattern_1'
         result = {
             'title': "",
+            'description': '',
             'product': '',
             'component': '',
             'subcomponent': '',
             'applicable': False,
-            'description': '',
             'kb_search_terms': "",
             'kb_search_results': {}
         }
+        self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
+        self.analysis_data['results'][key] = result
 
 
