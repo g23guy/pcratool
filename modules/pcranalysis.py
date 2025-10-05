@@ -88,6 +88,7 @@ class PacemakerClusterAnalysis():
 
     def __common_pattern_0(self, count):
         key = 'common_pattern_0'
+        num_tids = 10
         result = {
             'title': "Fencing Resource Required",
             'description': 'Clusters are supported when a stonith fencing resource is enabled.',
@@ -101,7 +102,7 @@ class PacemakerClusterAnalysis():
         self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
         if self.report_data['cluster']['stonith']['enabled'] is False:
             result['applicable'] = True
-            result['kb_search_results'] = suse_kb.search_kb(result['product'], result['kb_search_terms'], 10)
+            result['kb_search_results'] = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
         self.analysis_data['results'][key] = result
 
     def __common_pattern_1(self, count):
