@@ -1,3 +1,5 @@
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+#-*- coding: utf-8 -*-
 '''
 Pacemaker Cluster Report Analysis Module
 Copyright (c) 2025 SUSE LLC
@@ -31,11 +33,7 @@ import re
 import sys
 import json
 import datetime
-from distutils.version import LooseVersion
-
-# CONSTANTS
-
-# COMMON ISSUES
+import suse_kb
 
 class PacemakerClusterAnalysis():
     '''
@@ -46,7 +44,11 @@ class PacemakerClusterAnalysis():
     def __init__(self, msg, report_data):
         self.msg = msg
         self.report_data = report_data
-        self.analysis_data = {}
+        self.analysis_data = {
+            'timeAnalysis': '',
+            'results': {},
+        }
+        
         self.analysis_datetime = datetime.datetime.now()
         self.analysis_data['timeAnalysis'] = str(self.analysis_datetime.year) + "-" + str(self.analysis_datetime.month).zfill(2) + "-" + str(self.analysis_datetime.day).zfill(2) + " " + str(self.analysis_datetime.hour).zfill(2) + ":" + str(self.analysis_datetime.minute).zfill(2) + ":" + str(self.analysis_datetime.second).zfill(2)
 
@@ -66,11 +68,56 @@ class PacemakerClusterAnalysis():
             sys.exit(13)
         self.msg.min("Cluster Analysis Data File", report_file)
 
-    def __apply_common_patterns(self):
-        self.msg.verbose("Common Patterns", "Applying")
-
     def analyze(self):
         self.msg.min("Cluster Data", "Analyzing")
         self.__apply_common_patterns()
+
+    def __apply_common_patterns(self):
+        self.msg.normal("Common Patterns", "Applying")
+        patterns = {
+            self.__common_pattern_0: True,
+            self.__common_pattern_1: True,
+        }
+        count = {
+            'total': len(patterns),
+            'current': 0,
+        }
+        for key, value in patterns.items():
+            count['current'] += 1
+            key(count)
+
+    def __common_pattern_0(self, count):
+        key = 'common_pattern_0'
+        num_tids = 10
+        result = {
+            'title': "Fencing Resource Required",
+            'description': 'Clusters are supported when a stonith fencing resource is enabled.',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Fencing',
+            'subcomponent': 'All',
+            'applicable': False,
+            'kb_search_terms': "stonith resource not enabled unsupported",
+            'kb_search_results': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
+        if self.report_data['cluster']['stonith']['enabled'] is False:
+            result['applicable'] = True
+            result['kb_search_results'] = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
+        self.analysis_data['results'][key] = result
+
+    def __common_pattern_1(self, count):
+        key = 'common_pattern_1'
+        result = {
+            'title': "",
+            'description': '',
+            'product': '',
+            'component': '',
+            'subcomponent': '',
+            'applicable': False,
+            'kb_search_terms': "",
+            'kb_search_results': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
+        self.analysis_data['results'][key] = result
 
 
