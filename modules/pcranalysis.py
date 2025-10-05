@@ -93,7 +93,7 @@ class PacemakerClusterAnalysis():
         result = {
             'title': "Fencing Resource Required",
             'description': 'Clusters are supported when a stonith fencing resource is enabled.',
-            'product': '',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
             'component': 'Fencing',
             'subcomponent': 'All',
             'applicable': False,
