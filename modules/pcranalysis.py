@@ -1,3 +1,5 @@
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+#-*- coding: utf-8 -*-
 '''
 Pacemaker Cluster Report Analysis Module
 Copyright (c) 2025 SUSE LLC
@@ -31,11 +33,7 @@ import re
 import sys
 import json
 import datetime
-from distutils.version import LooseVersion
-
-# CONSTANTS
-
-# COMMON ISSUES
+import suse_kb
 
 class PacemakerClusterAnalysis():
     '''
@@ -103,6 +101,7 @@ class PacemakerClusterAnalysis():
         self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
         if self.report_data['cluster']['stonith']['enabled'] is False:
             result['applicable'] = True
+            result['kb_search_results'] = suse_kb.search_kb(result['product'], result['kb_search_terms'], 10)
         self.analysis_data['results'][key] = result
 
     def __common_pattern_1(self, count):

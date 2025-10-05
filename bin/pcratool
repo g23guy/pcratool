@@ -1,4 +1,7 @@
 #!/usr/bin/python3
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+#-*- coding: utf-8 -*-
+
 SVER = '0.0.6-dev'
 
 ##############################################################################
