@@ -101,17 +101,17 @@ class PacemakerClusterAnalysis():
             'kb_search_terms': "stonith resource not enabled unsupported",
             'kb_search_results': {}
         }
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Hardware Requirements, Node fencing/STONITH",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-requirements.html",
+            },
+        }
         num_tids = self.TID_MAX
         self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
         if self.report_data['cluster']['stonith']['enabled'] is False:
             result['applicable'] = True
-            preferred = {
-                "doc1": {
-                    "id": "Documentation",
-                    "title": "Hardware Requirements, Node fencing/STONITH",
-                    "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-requirements.html",
-                },
-            }
             if self.report_data['source_data']['search_tids']:
                 num_tids -= len(preferred)
                 tids = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
