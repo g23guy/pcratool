@@ -32,10 +32,10 @@ def search_kb(product, search_str='', num_results=0):
             kb_tid = kb.find('span').text.strip('(').strip(')')
             kb_title = kb.text
             kb_url = kb_server + kb.get('href')
-            tid = { i : {
-                "kb_tid": kb_tid,
-                "kb_title": kb_title,
-                "kb_url": kb_url,
+            tid = { "tid" + str(i) : {
+                "id": kb_tid,
+                "title": kb_title,
+                "url": kb_url,
                 }
             }
             tids.update(tid)

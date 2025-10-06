@@ -40,6 +40,7 @@ class PacemakerClusterAnalysis():
     Analyzes the report_data from the cluster report files for known issues.
     '''
     GITHUB_OWNER = 'https://github.com/openSUSE/'
+    TID_MAX = 10
 
     def __init__(self, msg, report_data):
         self.msg = msg
@@ -48,7 +49,6 @@ class PacemakerClusterAnalysis():
             'timeAnalysis': '',
             'results': {},
         }
-        
         self.analysis_datetime = datetime.datetime.now()
         self.analysis_data['timeAnalysis'] = str(self.analysis_datetime.year) + "-" + str(self.analysis_datetime.month).zfill(2) + "-" + str(self.analysis_datetime.day).zfill(2) + " " + str(self.analysis_datetime.hour).zfill(2) + ":" + str(self.analysis_datetime.minute).zfill(2) + ":" + str(self.analysis_datetime.second).zfill(2)
 
@@ -66,10 +66,13 @@ class PacemakerClusterAnalysis():
         except Exception as e:
             self.msg.min(" ERROR:", "Cannot write {} file - {}".format(report_file, str(e)))
             sys.exit(13)
-        self.msg.min("Cluster Analysis Data File", report_file)
+        self.msg.normal("Cluster Analysis Data File", report_file)
 
     def analyze(self):
-        self.msg.min("Cluster Data", "Analyzing")
+        if self.report_data['source_data']['search_tids']:
+            self.msg.min("Cluster Data", "Analyzing")
+        else:
+            self.msg.min("Cluster Data", "Analyzing, TID Searching Disabled")
         self.__apply_common_patterns()
 
     def __apply_common_patterns(self):
@@ -82,13 +85,12 @@ class PacemakerClusterAnalysis():
             'total': len(patterns),
             'current': 0,
         }
-        for key, value in patterns.items():
+        for common_pattern, value in patterns.items():
             count['current'] += 1
-            key(count)
+            common_pattern(count)
 
     def __common_pattern_0(self, count):
         key = 'common_pattern_0'
-        num_tids = 10
         result = {
             'title': "Fencing Resource Required",
             'description': 'Clusters are supported when a stonith fencing resource is enabled.',
@@ -99,10 +101,23 @@ class PacemakerClusterAnalysis():
             'kb_search_terms': "stonith resource not enabled unsupported",
             'kb_search_results': {}
         }
+        num_tids = self.TID_MAX
         self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
         if self.report_data['cluster']['stonith']['enabled'] is False:
             result['applicable'] = True
-            result['kb_search_results'] = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
+            preferred = {
+                "doc1": {
+                    "id": "Documentation",
+                    "title": "Hardware Requirements, Node fencing/STONITH",
+                    "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-requirements.html",
+                },
+            }
+            if self.report_data['source_data']['search_tids']:
+                num_tids -= len(preferred)
+                tids = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
+            else:
+                tids = {}
+            result['kb_search_results'] = {**preferred, **tids}
         self.analysis_data['results'][key] = result
 
     def __common_pattern_1(self, count):

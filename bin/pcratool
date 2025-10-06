@@ -75,12 +75,14 @@ def usage():
     print("OPTIONS")
     print(display.format('-h, --help', "Displays this screen"))
     print(display.format('-b, --batch', "Batch mode that disables the progress bar"))
+    print(display.format('-c, --disable_combine', "Disable combining and sorting log files"))
     print(display.format('-d, --debug', "Use log level 4"))
     print(display.format('-k, --keep', "Do not delete extracted directories"))
     print(display.format('-n, --normal', "Use log level 2, default log level: Minimal"))
     print(display.format('-o <path>, --output <path>', "Report file output directory"))
     print(display.format('-q, --quiet', "Use log level 0"))
     print(display.format('-r, --remove', "Remove archive files leaving only the Report file. Ignored in debug mode."))
+    print(display.format('-s, --disable_search', "Disable searching for possible TIDs"))
     print(display.format('-t, --type', "Report file output type, options: json, html, all. Default: html"))
     print(display.format('-v, --verbose', "Use log level 3"))
     print(display.format('-x <path>, --dirpath_extract_here <path>', "Extract any HB report archives to this alternate extraction directory"))
@@ -476,7 +478,7 @@ def check_report_path_given(msg, config_file, report_path_cmd, report_path_confi
     return path_data
 
 def _write_diff_file(filename, filepath, diff_content):
-    msg.min(" Differences Data File", filepath)
+    msg.normal(" Differences Data File", filepath)
     try:
         with open(filepath, "w") as f:
             for line in diff_content:
@@ -508,7 +510,7 @@ def _get_cluster_basics(msg, file_data, cluster_data):
                 msg.debug("> get hb_report_by", cluster_data['hb_report_by'])
 
     ##### analysis.txt
-    msg.min("Evalutating Analysis Files", "Differences")
+    msg.min("Analysis Files", "Evaluation Differences")
     filename = "analysis.txt"
     msg.debug("_get_cluster_basics: File", filename)
     filepath = file_data['dirpath_data_source'] + "/" + filename
@@ -609,7 +611,7 @@ def _parse_permissions_txt(msg, dirpath, node_name, cluster_data, found_permissi
     ##### permissions.txt
     filename = "permissions.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_parse_permissions_txt: File", filename)
+    msg.verbose(" Parsing file", filepath)
 
     msg.debug("> evaluate", "permissions_valid")
     try:
@@ -635,7 +637,7 @@ def _parse_sysinfo_txt(msg, dirpath, node_name, cluster_data, found_sysinfo):
     ##### sysinfo.txt
     filename = "sysinfo.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_parse_sysinfo_txt: File", filename)
+    msg.verbose(" Parsing file", filepath)
     try:
         with open(filepath) as f:
             filedata = f.read().splitlines()
@@ -753,7 +755,7 @@ def _parse_sysstats_txt(msg, dirpath, node_name, cluster_data, found_sysstats):
     ##### sysstats.txt
     filename = "sysstats.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_parse_sysstats_txt: File", filename)
+    msg.verbose(" Parsing file", filepath)
     try:
         with open(filepath) as f:
             filedata = f.read().splitlines()
@@ -984,7 +986,7 @@ def _parse_members_txt(msg, dirpath, cluster_data, found_members):
     ##### members.txt
     filename = "members.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_parse_members_txt: File", filename)
+    msg.verbose(" Parse File", filepath)
     try:
         with open(filepath) as f:
             filedata = f.read().splitlines()
@@ -1007,6 +1009,7 @@ def _parse_members_txt(msg, dirpath, cluster_data, found_members):
     return [cluster_data, found_members]
 
 def _get_nodes_system_details(msg, file_data, cluster_data):
+    msg.min("System Details", "Gathering per Node")
     found_permissions = False
     found_sysinfo = False
     found_sysstats = False
@@ -1476,7 +1479,7 @@ def _parse_sbd_txt(msg, dirpath, cluster_data, found_sbd_txt):
     ##### sbd.txt
     filename = "sbd.txt"
     filepath = dirpath + "/" + filename
-    msg.debug("_parse_sbd_txt: File", filename)
+    msg.verbose(" Parse File", filepath)
     try:
         with open(filepath) as f:
             filedata = f.read().splitlines()
@@ -1504,7 +1507,7 @@ def _parse_sbd(msg, dirpath, cluster_data, found_sbd):
     ##### sbd
     filename = "sbd"
     filepath = dirpath + "/" + filename
-    msg.debug("_parse_sbd: File", filename)
+    msg.verbose(" Parse File", filepath)
 
     try:
         with open(filepath) as f:
@@ -1649,6 +1652,7 @@ def get_cluster_data(msg, file_data):
     return cluster_data
 
 def _create_reports_path(msg, data):
+    msg.min("Report Files Directory", data['dirpath_reports'])
     try:
         os.makedirs(data['dirpath_reports'], exist_ok=True)
     except OSError as e:
@@ -1751,7 +1755,7 @@ def synchronize_log_files(msg, report_data):
         if len_f_names > 0:
             combined_notes = []
             f_combined_path = report_data['source_data']['dirpath_reports'] + "/combined." + log_file
-            msg.min(" Combining {} File(s)".format(len_f_names), f_combined_path)
+            msg.normal(" Combining {} File(s)".format(len_f_names), f_combined_path)
             t_parse_exceptions = 0
             empty_files = 0
             unsorted_files = 0
@@ -1818,7 +1822,7 @@ def save_report_data(msg, report_data):
     except Exception as e:
         msg.min(" ERROR:", "Cannot write {} file - {}".format(report_file, str(e)))
         sys.exit(13)
-    msg.min("Cluster Report Data File", report_file)
+    msg.normal("Cluster Report Data File", report_file)
 
 ##############################################################################
 # Main
@@ -1837,6 +1841,7 @@ def main(argv):
     remove_extracted_directory = True
     pattern_library = False
     combine_logs = True
+    search_tids = True
     given_type = ''
     given_report_output_path = {}
     given_extract_path = {}
@@ -1861,7 +1866,7 @@ def main(argv):
         sys.exit(1)
 
     try:
-        (optlist, args) = getopt.gnu_getopt(argv[1:], "hbcdkno:pl:qrvx:", ["help", "batch", "dont_combine", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "verbose", "dirpath_extract_here="])
+        (optlist, args) = getopt.gnu_getopt(argv[1:], "hbcdkno:pl:qrsvx:", ["help", "batch", "disable_combine", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "disable_search", "verbose", "dirpath_extract_here="])
     except getopt.GetoptError as exc:
         title()
         print("Error:", exc, file=sys.stderr)
@@ -1875,7 +1880,7 @@ def main(argv):
             sys.exit(0)
         elif opt in {"-b", "--batch"}:
             progress_bar_active = False
-        elif opt in {"-c", "--dont_combine"}:
+        elif opt in {"-c", "--disable_combine"}:
             combine_logs = False
         elif opt in {"-d", "--debug"}:
             msg.set_level(msg.LOG_DEBUG)
@@ -1888,6 +1893,8 @@ def main(argv):
             given_report_output_path = arg
         elif opt in {"-r", "--remove"}:
             remove_archive = True
+        elif opt in {"-s", "--disable_search"}:
+            search_tids = False
         elif opt in {"-q", "--quiet"}:
             msg.set_level(msg.LOG_QUIET)
         elif opt in {"-v", "--verbose"}:
@@ -1923,6 +1930,7 @@ def main(argv):
             this_file_data['remove_tarball'] = False
             this_file_data['remove_directory'] = False
             this_file_data['combine_logs'] = combine_logs
+            this_file_data['search_tids'] = search_tids
             
             if this_file_data['exists']:
                 count += 1
@@ -2013,6 +2021,8 @@ def main(argv):
                     save_report_data(msg, report_data)
                     if report_data['source_data']['combine_logs'] is True:
                         synchronize_log_files(msg, report_data)
+                    else:
+                        msg.min("Log Files", "Combining and Sorting, Disabled")
                     cluster = pca.PacemakerClusterAnalysis(msg, report_data)
                     cluster.analyze()
                     cluster.save_results()
