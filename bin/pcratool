@@ -40,6 +40,7 @@ import shutil
 import getopt
 import subprocess
 import configparser
+from datetime import datetime as dt
 import pprint # for debugging only, remove before release
 import xml.dom.minidom
 
