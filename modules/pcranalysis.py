@@ -49,6 +49,14 @@ class PacemakerClusterAnalysis():
             'timeAnalysis': '',
             'results': {},
         }
+        self.pattern_manifest = {
+            self.__common_pattern_0: True,
+            self.__common_pattern_1: True,
+        }
+        self.count = {
+            'total': len(self.pattern_manifest),
+            'current': 0,
+        }
         self.analysis_datetime = datetime.datetime.now()
         self.analysis_data['timeAnalysis'] = str(self.analysis_datetime.year) + "-" + str(self.analysis_datetime.month).zfill(2) + "-" + str(self.analysis_datetime.day).zfill(2) + " " + str(self.analysis_datetime.hour).zfill(2) + ":" + str(self.analysis_datetime.minute).zfill(2) + ":" + str(self.analysis_datetime.second).zfill(2)
 
@@ -57,6 +65,9 @@ class PacemakerClusterAnalysis():
 
     def get_results(self):
         return self.analysis_data
+
+    def get_pattern_count(self):
+        return self.count['total']
 
     def save_results(self):
         report_file = self.report_data['source_data']['dirpath_reports'] + "/analysis_data.json"
@@ -77,29 +88,37 @@ class PacemakerClusterAnalysis():
 
     def __apply_common_patterns(self):
         self.msg.normal("Common Patterns", "Applying")
-        patterns = {
-            self.__common_pattern_0: True,
-            self.__common_pattern_1: True,
-        }
-        count = {
-            'total': len(patterns),
-            'current': 0,
-        }
-        for common_pattern, value in patterns.items():
-            count['current'] += 1
-            common_pattern(count)
+        for common_pattern, value in self.pattern_manifest.items():
+            self.count['current'] += 1
+            common_pattern()
 
-    def __common_pattern_0(self, count):
+    def __set_applicable(self, result, preferred):
+        num_tids = self.TID_MAX
+        result['applicable'] = True
+        if self.report_data['source_data']['search_tids']:
+            num_tids -= len(preferred)
+            tids = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
+        else:
+            tids = {}
+        result['kb_search_results'] = {**preferred, **tids}
+        return result
+
+#################################################################################################
+# Common Pattern Definitions
+#################################################################################################
+
+    def __common_pattern_0(self):
         key = 'common_pattern_0'
+        num_tids = self.TID_MAX
         result = {
             'title': "Fencing Resource Required",
             'description': 'Clusters are supported when a stonith fencing resource is enabled.',
             'product': 'SUSE Linux Enterprise High Availability Extension',
             'component': 'Fencing',
-            'subcomponent': 'All',
+            'subcomponent': 'STONITH',
             'applicable': False,
             'kb_search_terms': "stonith resource not enabled unsupported",
-            'kb_search_results': {}
+            'suggestions': {}
         }
         preferred = {
             "doc1": {
@@ -108,31 +127,40 @@ class PacemakerClusterAnalysis():
                 "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-requirements.html",
             },
         }
-        num_tids = self.TID_MAX
-        self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
+
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
         if self.report_data['cluster']['stonith']['enabled'] is False:
-            result['applicable'] = True
-            if self.report_data['source_data']['search_tids']:
-                num_tids -= len(preferred)
-                tids = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
-            else:
-                tids = {}
-            result['kb_search_results'] = {**preferred, **tids}
+            result = self.__set_applicable(result, preferred)
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_1(self, count):
+    def __common_pattern_1(self):
         key = 'common_pattern_1'
         result = {
-            'title': "",
-            'description': '',
-            'product': '',
-            'component': '',
-            'subcomponent': '',
+            'title': "Split Brain Detection",
+            'description': 'Detected possible split brain cluster',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Fencing',
+            'subcomponent': 'Split Brain',
             'applicable': False,
-            'kb_search_terms': "",
-            'kb_search_results': {}
+            'kb_search_terms': "troubleshooting stonith split brain",
+            'suggestions': {}
         }
-        self.msg.verbose(" Searching [{}/{}]".format(count['current'], count['total']), result['title'])
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Fencing and STONITH",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-fencing.html",
+            },
+        }
+        dc_list = []
+
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
+        for node in self.report_data['cluster']['nodes']:
+            if self.report_data['cluster']['nodes'][node]['is_dc_crm'] or self.report_data['cluster']['nodes'][node]['is_dc_local']:
+                dc_list.append(node)
+        if len(dc_list) > 1:
+            result['description'] = result['description'] + " per DC on nodes: " + " ".join(dc_list)
+            result = self.__set_applicable(result, preferred)
         self.analysis_data['results'][key] = result
 
 

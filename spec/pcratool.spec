@@ -29,6 +29,8 @@ URL:            https://github.com/g23guy/pcratool
 Group:          System/Monitoring
 Source:         %{name}-%{version}.tar.gz
 Requires:       python3-base
+Requires:       python3-urllib3,python3-requests,python3-beautifulsoup4
+BuildRequires:  python3-urllib3,python3-requests,python3-beautifulsoup4
 BuildArch:      noarch
 
 %description

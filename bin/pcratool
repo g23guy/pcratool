@@ -37,16 +37,11 @@ import sys
 import json
 import signal
 import shutil
-import fileinput
-from datetime import datetime as dt
-import socket
 import getopt
-import smtplib
 import subprocess
 import configparser
 import pprint # for debugging only, remove before release
 import xml.dom.minidom
-
 
 tool_name = os.path.basename(__file__)
 mod_path = '/usr/lib/' + tool_name
@@ -510,7 +505,7 @@ def _get_cluster_basics(msg, file_data, cluster_data):
                 msg.debug("> get hb_report_by", cluster_data['hb_report_by'])
 
     ##### analysis.txt
-    msg.min("Analysis Files", "Evaluation Differences")
+    msg.min("Analysis Files", "Evaluating Differences")
     filename = "analysis.txt"
     msg.debug("_get_cluster_basics: File", filename)
     filepath = file_data['dirpath_data_source'] + "/" + filename
@@ -1841,7 +1836,7 @@ def main(argv):
     remove_extracted_directory = True
     pattern_library = False
     combine_logs = True
-    search_tids = True
+    search_tids = False
     given_type = ''
     given_report_output_path = {}
     given_extract_path = {}
@@ -1894,7 +1889,7 @@ def main(argv):
         elif opt in {"-r", "--remove"}:
             remove_archive = True
         elif opt in {"-s", "--disable_search"}:
-            search_tids = False
+            search_tids = True
         elif opt in {"-q", "--quiet"}:
             msg.set_level(msg.LOG_QUIET)
         elif opt in {"-v", "--verbose"}:
