@@ -37,11 +37,7 @@ import sys
 import json
 import signal
 import shutil
-import fileinput
-from datetime import datetime as dt
-import socket
 import getopt
-import smtplib
 import subprocess
 import configparser
 import pprint # for debugging only, remove before release
