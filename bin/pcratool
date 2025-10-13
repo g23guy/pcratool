@@ -101,7 +101,6 @@ def main(argv):
     this_cluster_data = {}
     remove_archive = False
     remove_extracted_directory = True
-    pattern_library = False
     combine_logs = True
     search_tids = False
     given_type = ''
@@ -109,9 +108,11 @@ def main(argv):
     given_extract_path = {}
     extract_path = ''
     report_output_path = ''
+    report_output_type = 'json'
     progress_bar_active = True
     width = 85
     description_width = 30
+    msg.set_level(msg.LOG_MIN)
 
     if( os.path.exists(config_file) ):
         config.read(config_file)
@@ -125,10 +126,6 @@ def main(argv):
             msg.set_level(config_logging)
         else:
             msg.verbose("Warning: Invalid log level in config file, using instance default")
-    else:
-        title(width)
-        print("Error: File not found - " + config_file + "\n")
-        sys.exit(1)
 
     try:
         (optlist, args) = getopt.gnu_getopt(argv[1:], "hbcdkno:pl:qrsvx:", ["help", "batch", "disable_combine", "debug", "keep", "normal", "output=", "summary", "log_level=", "quiet", "remove", "disable_search", "verbose", "dirpath_extract_here="])
