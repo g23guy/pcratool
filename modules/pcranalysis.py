@@ -28,11 +28,10 @@ __date_modified__ = '2025 Oct 01'
 __version__       = '0.0.1'
 
 # IMPORTS
-import os
-import re
 import sys
 import json
-import datetime
+from datetime import datetime as dt
+
 import suse_kb
 
 class PacemakerClusterAnalysis():
@@ -57,8 +56,8 @@ class PacemakerClusterAnalysis():
             'total': len(self.pattern_manifest),
             'current': 0,
         }
-        self.analysis_datetime = datetime.datetime.now()
-        self.analysis_data['timeAnalysis'] = str(self.analysis_datetime.year) + "-" + str(self.analysis_datetime.month).zfill(2) + "-" + str(self.analysis_datetime.day).zfill(2) + " " + str(self.analysis_datetime.hour).zfill(2) + ":" + str(self.analysis_datetime.minute).zfill(2) + ":" + str(self.analysis_datetime.second).zfill(2)
+        self.analyzed = dt.now()
+        self.analysis_data['timeAnalysis'] = str(self.analyzed.year) + "-" + str(self.analyzed.month).zfill(2) + "-" + str(self.analyzed.day).zfill(2) + " " + str(self.analyzed.hour).zfill(2) + ":" + str(self.analyzed.minute).zfill(2) + ":" + str(self.analyzed.second).zfill(2)
 
     def is_valid(self):
         return self.report_data['source_data']['valid']
