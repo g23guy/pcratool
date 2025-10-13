@@ -48,7 +48,6 @@ import pcrcore
 import pcrcluster
 
 config_file = '/etc/' + tool_name + "/" + tool_name + ".conf"
-progress_bar_active = True
 
 def title(width):
     pcrcore.separator_line(width)
@@ -94,7 +93,7 @@ def signal_handler(sig, frame):
 
 def main(argv):
     '''main entry point'''
-    global SVER, progress_bar_active, config_file, tool_name
+    global SVER, config_file, tool_name
     VALID_MIME_TYPES = [ 'application/x-xz', 'application/x-bzip', 'application/x-bzip2','application/x-gzip', 'application/x-tar' ]
 
     report_data = { 'tool_name': tool_name, 'tool_version': SVER }
@@ -110,6 +109,7 @@ def main(argv):
     given_extract_path = {}
     extract_path = ''
     report_output_path = ''
+    progress_bar_active = True
     width = 85
     description_width = 30
 
