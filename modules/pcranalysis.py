@@ -24,8 +24,8 @@ Module of functions that look for common cluster issues and suggestions.
 #
 ##############################################################################
 __author__        = 'Jason Record <jason.record@suse.com>, Raine Curtis <raine.curtis@suse.com>'
-__date_modified__ = '2025 Oct 01'
-__version__       = '0.0.1'
+__date_modified__ = '2025 Nov 11'
+__version__       = '0.0.2'
 
 # IMPORTS
 import sys
@@ -55,6 +55,7 @@ class PacemakerClusterAnalysis():
             self.__common_pattern_1: True,
             self.__common_pattern_2: True,
             self.__common_pattern_3: True,
+            self.__common_pattern_4: True,
         }
         self.count = {
             'total': len(self.pattern_manifest),
@@ -223,5 +224,32 @@ class PacemakerClusterAnalysis():
         elif( nodes_in_maint > 0 ):
             result = self.__set_applicable(result, preferred)
             result['description'] = "In Maintenance Mode, Cluster: False, Nodes: {}".format(' '.join(self.report_data['cluster']['nodes_maintenance']))
+        self.analysis_data['results'][key] = result
+
+    def __common_pattern_4(self):
+        key = 'common_pattern_4'
+        result = {
+            'title': "Cluster Standby Mode",
+            'description': 'Nodes in standby mode: None',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Maintenance',
+            'subcomponent': 'Standby',
+            'applicable': False,
+            'kb_search_terms': "cluster standby mode",
+            'suggestions': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Executing maintenance tasks",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-maintenance.html",
+            },
+        }
+
+        nodes_in_standy = len(self.report_data['cluster']['nodes_standby'])
+        if( nodes_in_standy > 0 ):
+            result = self.__set_applicable(result, preferred)
+            result['description'] = "Nodes in standby mode: {}".format(' '.join(self.report_data['cluster']['nodes_standby']))
         self.analysis_data['results'][key] = result
 
