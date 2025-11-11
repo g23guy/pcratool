@@ -54,6 +54,7 @@ class PacemakerClusterAnalysis():
             self.__common_pattern_0: True,
             self.__common_pattern_1: True,
             self.__common_pattern_2: True,
+            self.__common_pattern_3: True,
         }
         self.count = {
             'total': len(self.pattern_manifest),
@@ -191,4 +192,36 @@ class PacemakerClusterAnalysis():
             result = self.__set_applicable(result, preferred)
         self.analysis_data['results'][key] = result
 
+    def __common_pattern_3(self):
+        key = 'common_pattern_3'
+        result = {
+            'title': "Cluster Maintenance Mode",
+            'description': 'In Maintenance Mode, Cluster: False, Nodes: None',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Maintenance',
+            'subcomponent': 'Mode',
+            'applicable': False,
+            'kb_search_terms': "cluster maintenance mode",
+            'suggestions': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Executing maintenance tasks",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-maintenance.html",
+            },
+        }
+
+        nodes_in_maint = len(self.report_data['cluster']['nodes_maintenance'])
+        if( self.report_data['cluster']['cluster_maintenance'] is True ):
+            result = self.__set_applicable(result, preferred)
+            if( nodes_in_maint > 0 ):
+                result['description'] = "In Maintenance Mode, Cluster: True, Nodes: {}".format(' '.join(self.report_data['cluster']['nodes_maintenance']))
+            else:
+                result['description'] = "In Maintenance Mode, Cluster: True, Nodes: None"
+        elif( nodes_in_maint > 0 ):
+            result = self.__set_applicable(result, preferred)
+            result['description'] = "In Maintenance Mode, Cluster: False, Nodes: {}".format(' '.join(self.report_data['cluster']['nodes_maintenance']))
+        self.analysis_data['results'][key] = result
 
