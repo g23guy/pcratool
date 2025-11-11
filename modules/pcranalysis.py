@@ -45,19 +45,23 @@ class PacemakerClusterAnalysis():
         self.msg = msg
         self.report_data = report_data
         self.analysis_data = {
-            'timeAnalysis': '',
+            'time_analyzed': '',
+            'patterns_total': 0,
+            'patterns_applied': 0,
             'results': {},
         }
         self.pattern_manifest = {
             self.__common_pattern_0: True,
             self.__common_pattern_1: True,
+            self.__common_pattern_2: True,
         }
         self.count = {
             'total': len(self.pattern_manifest),
             'current': 0,
         }
         self.analyzed = dt.now()
-        self.analysis_data['timeAnalysis'] = str(self.analyzed.year) + "-" + str(self.analyzed.month).zfill(2) + "-" + str(self.analyzed.day).zfill(2) + " " + str(self.analyzed.hour).zfill(2) + ":" + str(self.analyzed.minute).zfill(2) + ":" + str(self.analyzed.second).zfill(2)
+        self.analysis_data['time_analyzed'] = str(self.analyzed.year) + "-" + str(self.analyzed.month).zfill(2) + "-" + str(self.analyzed.day).zfill(2) + " " + str(self.analyzed.hour).zfill(2) + ":" + str(self.analyzed.minute).zfill(2) + ":" + str(self.analyzed.second).zfill(2)
+        self.analysis_data['patterns_total'] = self.count['total']
 
     def is_valid(self):
         return self.report_data['source_data']['valid']
@@ -94,6 +98,7 @@ class PacemakerClusterAnalysis():
     def __set_applicable(self, result, preferred):
         num_tids = self.TID_MAX
         result['applicable'] = True
+        self.analysis_data['patterns_applied'] += 1
         if self.report_data['source_data']['search_tids']:
             num_tids -= len(preferred)
             tids = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
@@ -108,7 +113,6 @@ class PacemakerClusterAnalysis():
 
     def __common_pattern_0(self):
         key = 'common_pattern_0'
-        num_tids = self.TID_MAX
         result = {
             'title': "Fencing Resource Required",
             'description': 'Clusters are supported when a stonith fencing resource is enabled.',
@@ -119,6 +123,7 @@ class PacemakerClusterAnalysis():
             'kb_search_terms': "stonith resource not enabled unsupported",
             'suggestions': {}
         }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
         preferred = {
             "doc1": {
                 "id": "Documentation",
@@ -127,7 +132,6 @@ class PacemakerClusterAnalysis():
             },
         }
 
-        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
         if self.report_data['cluster']['stonith']['enabled'] is False:
             result = self.__set_applicable(result, preferred)
         self.analysis_data['results'][key] = result
@@ -144,6 +148,7 @@ class PacemakerClusterAnalysis():
             'kb_search_terms': "troubleshooting stonith split brain",
             'suggestions': {}
         }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
         preferred = {
             "doc1": {
                 "id": "Documentation",
@@ -153,12 +158,36 @@ class PacemakerClusterAnalysis():
         }
         dc_list = []
 
-        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
         for node in self.report_data['cluster']['nodes']:
             if self.report_data['cluster']['nodes'][node]['is_dc_crm'] or self.report_data['cluster']['nodes'][node]['is_dc_local']:
                 dc_list.append(node)
         if len(dc_list) > 1:
             result['description'] = result['description'] + " per DC on nodes: " + " ".join(dc_list)
+            result = self.__set_applicable(result, preferred)
+        self.analysis_data['results'][key] = result
+
+    def __common_pattern_2(self):
+        key = 'common_pattern_2'
+        result = {
+            'title': "Verify Clean SBD",
+            'description': 'All slots on all SBD nodes should be clear',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Fencing',
+            'subcomponent': 'SBD',
+            'applicable': False,
+            'kb_search_terms': "stonith sbd nodes not clear",
+            'suggestions': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Storage protection and SBD",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-storage-protect.html",
+            },
+        }
+
+        if( self.report_data['cluster']['stonith']['sbd']['found'] is True and self.report_data['cluster']['stonith']['sbd']['all_clear'] == 0 ):
             result = self.__set_applicable(result, preferred)
         self.analysis_data['results'][key] = result
 
