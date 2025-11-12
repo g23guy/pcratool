@@ -60,11 +60,11 @@ def _get_cluster_basics(msg, file_data, cluster_data):
     if filedata:
         for line in filedata:
             if line.startswith("Date: "):
-                cluster_data['hb_report_date'] = line.split(' ', 1)[1]
-                msg.debug("> get hb_report_date", cluster_data['hb_report_date'])
+                cluster_data['crm_report_date'] = line.split(' ', 1)[1]
+                msg.debug("> get crm_report_date", cluster_data['crm_report_date'])
             if line.startswith("By: "):
-                cluster_data['hb_report_by'] = line.split(' ', 1)[1]
-                msg.debug("> get hb_report_by", cluster_data['hb_report_by'])
+                cluster_data['crm_report_by'] = line.split(' ', 1)[1]
+                msg.debug("> get crm_report_by", cluster_data['crm_report_by'])
 
     ##### analysis.txt
     msg.min("Analysis Files", "Evaluating Differences")

@@ -2,14 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #-*- coding: utf-8 -*-
 
-SVER = '0.0.6-dev'
+SVER = '0.0.8-dev'
 
 ##############################################################################
 # pcratool - Pacemaker Cluster Report Analysis Tool
 # Copyright (c) 2025 SUSE LLC
 #
-# Description:  Analyzes HB report archives for known issues
-# Modified:     2025 Oct 01
+# Description:  Analyzes CRM report archives for known issues
+# Modified:     2025 Nov 11
 #
 ##############################################################################
 #
@@ -57,7 +57,7 @@ def title(width):
 
 def usage():
     display = "  {:33} {}"
-    print("Usage: {} [OPTIONS] [/path/to/hb_report]".format(tool_name))
+    print("Usage: {} [OPTIONS] [/path/to/crm_report|/path/to/hb_report]".format(tool_name))
     print()
     print("OPTIONS")
     print(display.format('-h, --help', "Displays this screen"))
@@ -70,9 +70,8 @@ def usage():
     print(display.format('-q, --quiet', "Use log level 0"))
     print(display.format('-r, --remove', "Remove archive files leaving only the Report file. Ignored in debug mode."))
     print(display.format('-s, --disable_search', "Disable searching for possible TIDs"))
-    print(display.format('-t, --type', "Report file output type, options: json, html, all. Default: html"))
     print(display.format('-v, --verbose', "Use log level 3"))
-    print(display.format('-x <path>, --dirpath_extract_here <path>', "Extract any HB report archives to this alternate extraction directory"))
+    print(display.format('-x <path>, --dirpath_extract_here <path>', "Extract any CRM report archives to this alternate extraction directory"))
 #    print(display.format('-l <level>, --log_level <level>', "Set log level, default: Minimal"))
 #    print(display.format('', "0 Quiet, 1 Minimal, 2 Normal, 3 Verbose, 4 Debug"))
     print()
@@ -199,7 +198,7 @@ def main(argv):
 
                 if this_file_data['type'] == 'file':
                     if not this_file_data['tail_mime_type'] in VALID_MIME_TYPES:
-                        msg.min(" Missing file", "Not an HB report compressed file - {0}".format(this_file_data['path']))
+                        msg.min(" Missing file", "Not an CRM report compressed file - {0}".format(this_file_data['path']))
                         pcrcore.separate_entry(msg, width, total_args_given)
                         continue
                     this_file_data['remove_tarball'] = remove_archive
