@@ -89,7 +89,7 @@ class PacemakerClusterAnalysis():
 
     def __apply_common_patterns(self):
         self.msg.normal("Common Patterns", "Applying")
-        for common_pattern, value in self.pattern_manifest.items():
+        for common_pattern in self.pattern_manifest.keys():
             self.count['current'] += 1
             common_pattern()
 
