@@ -267,7 +267,7 @@ def extract_archive(msg, tarball):
         sys.exit(7)
     else:
         path_in_tarball = archdir + '/' + os.path.dirname(outfile).split("/")[0]
-        msg.verbose(' Embedded Directory', path_in_tarball)
+        msg.min(' Embedded Directory', path_in_tarball)
 
     return path_in_tarball
 
