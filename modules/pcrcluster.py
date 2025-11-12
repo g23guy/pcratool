@@ -966,7 +966,8 @@ def _get_nodes_cluster_cib(msg, file_data, cluster_data):
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
             msg.debug("_get_nodes_cluster_cib:", "Added {} from {}".format(node_name, "directory"))
-            cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
+#       next line fails %%%
+#       cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
 
     return cluster_data
             
