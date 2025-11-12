@@ -52,11 +52,12 @@ class PacemakerClusterAnalysis():
             'results': {},
         }
         self.pattern_manifest = {
-            self.__common_pattern_0: True,
             self.__common_pattern_1: True,
             self.__common_pattern_2: True,
             self.__common_pattern_3: True,
             self.__common_pattern_4: True,
+            self.__common_pattern_5: True,
+            self.__common_pattern_6: True,
         }
         self.count = {
             'total': len(self.pattern_manifest),
@@ -85,20 +86,6 @@ class PacemakerClusterAnalysis():
             sys.exit(13)
         self.msg.normal("Cluster Analysis Data File", report_file)
 
-    def analyze(self):
-        if self.report_data['source_data']['search_tids']:
-            self.msg.min("Cluster Data", "Analyzing")
-        else:
-            self.msg.min("Cluster Data", "Analyzing, TID Searching Disabled")
-        self.__apply_common_patterns()
-        self.msg.min("Cluster Data", "Total Patterns Evaluated: {}, Applicable to Cluster: {}".format(self.analysis_data['patterns_total'], self.analysis_data['patterns_applied']))
-        if( self.msg.get_level() >= self.msg.LOG_NORMAL ):
-            total_keys = len(self.analysis_data['patterns_applied_keys'])
-            count_keys = 0
-            for key in self.analysis_data['patterns_applied_keys']:
-                count_keys += 1
-                self.msg.normal(" Applicable Pattern [{}/{}]".format(count_keys, total_keys), self.analysis_data['results'][key]['description'])
-
     def __apply_common_patterns(self):
         self.msg.normal("Common Patterns", "Applying")
         for common_pattern, value in self.pattern_manifest.items():
@@ -118,97 +105,78 @@ class PacemakerClusterAnalysis():
         result['kb_search_results'] = {**preferred, **tids}
         return result
 
+    def analyze(self):
+        if self.report_data['source_data']['search_tids']:
+            self.msg.min("Cluster Data", "Analyzing")
+        else:
+            self.msg.min("Cluster Data", "Analyzing, TID Searching Disabled")
+        self.__apply_common_patterns()
+        self.msg.min("Cluster Data", "Total Patterns Evaluated: {}, Applicable to Cluster: {}".format(self.analysis_data['patterns_total'], self.analysis_data['patterns_applied']))
+        if( self.msg.get_level() >= self.msg.LOG_NORMAL ):
+            total_keys = len(self.analysis_data['patterns_applied_keys'])
+            count_keys = 0
+            for key in self.analysis_data['patterns_applied_keys']:
+                count_keys += 1
+                self.msg.normal(" Applicable Pattern [{}/{}]".format(count_keys, total_keys), self.analysis_data['results'][key]['description'])
+
 #################################################################################################
 # Common Pattern Definitions
 #################################################################################################
 
-    def __common_pattern_0(self):
-        key = 'common_pattern_0'
+    def __common_pattern_6(self):
+        key = 'common_pattern_6'
         result = {
-            'title': "Fencing Resource Required",
-            'description': 'Missing STONITH resource required for supportability',
+            'title': "Node Directory Permissions",
+            'description': 'Nodes with invalid permissions.txt: None',
             'product': 'SUSE Linux Enterprise High Availability Extension',
-            'component': 'Fencing',
-            'subcomponent': 'STONITH',
+            'component': 'Node',
+            'subcomponent': 'Permissions',
             'applicable': False,
-            'kb_search_terms': "stonith resource not enabled unsupported",
+            'kb_search_terms': "permissions.txt crm report",
             'suggestions': {}
         }
         self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
-        preferred = {
-            "doc1": {
-                "id": "Documentation",
-                "title": "Hardware Requirements, Node fencing/STONITH",
-                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-requirements.html",
-            },
-        }
+        preferred = {}
 
-        if self.report_data['cluster']['stonith']['enabled'] is False:
-            result = self.__set_applicable(result, preferred, key)
-        self.analysis_data['results'][key] = result
-
-    def __common_pattern_1(self):
-        key = 'common_pattern_1'
-        result = {
-            'title': "Split Brain Detection",
-            'description': 'Detected possible split brain cluster',
-            'product': 'SUSE Linux Enterprise High Availability Extension',
-            'component': 'Fencing',
-            'subcomponent': 'Split Brain',
-            'applicable': False,
-            'kb_search_terms': "troubleshooting stonith split brain",
-            'suggestions': {}
-        }
-        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
-        preferred = {
-            "doc1": {
-                "id": "Documentation",
-                "title": "Fencing and STONITH",
-                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-fencing.html",
-            },
-        }
-        dc_list = []
-
+        dirty_nodes = []
         for node in self.report_data['cluster']['nodes']:
-            if self.report_data['cluster']['nodes'][node]['is_dc_crm'] or self.report_data['cluster']['nodes'][node]['is_dc_local']:
-                dc_list.append(node)
-        if len(dc_list) > 1:
-            result['description'] = result['description'] + ", multiple DC nodes: " + " ".join(dc_list)
+            if( 'permissions_valid' in self.report_data['cluster']['nodes'][node] ):
+                if( self.report_data['cluster']['nodes'][node]['permissions_valid'] is False ):
+                    dirty_nodes.append(node)
+        if( dirty_nodes ):
             result = self.__set_applicable(result, preferred, key)
+            result['description'] = "Fix permissions or ownership described in permissions.txt for nodes: {}".format(' '.join(dirty_nodes))
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_2(self):
-        key = 'common_pattern_2'
+    def __common_pattern_5(self):
+        key = 'common_pattern_5'
         result = {
-            'title': "Verify Clean SBD",
-            'description': 'SBD nodes with dirty slots: None',
+            'title': "Cluster Standby Mode",
+            'description': 'Nodes in standby mode: None',
             'product': 'SUSE Linux Enterprise High Availability Extension',
-            'component': 'Fencing',
-            'subcomponent': 'SBD',
+            'component': 'Maintenance',
+            'subcomponent': 'Standby',
             'applicable': False,
-            'kb_search_terms': "stonith sbd nodes not clear",
+            'kb_search_terms': "cluster standby mode",
             'suggestions': {}
         }
         self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
         preferred = {
             "doc1": {
                 "id": "Documentation",
-                "title": "Storage protection and SBD",
-                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-storage-protect.html",
+                "title": "Executing maintenance tasks",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-maintenance.html",
             },
         }
 
-        unclean_nodes = []
-        if( self.report_data['cluster']['stonith']['sbd']['found'] is True and self.report_data['cluster']['stonith']['sbd']['all_clear'] == 0 ):
-            for node in self.report_data['cluster']['stonith']['sbd']['nodes']:
-                if( self.report_data['cluster']['stonith']['sbd']['nodes'][node]['is_clear'] is False ):
-                    unclean_nodes.append(node)
+        nodes_in_standy = len(self.report_data['cluster']['nodes_standby'])
+        if( nodes_in_standy > 0 ):
             result = self.__set_applicable(result, preferred, key)
-            result['description'] = "SBD nodes with dirty slots: {}".format(' '.join(unclean_nodes))
+            result['description'] = "Nodes in standby mode: {}".format(' '.join(self.report_data['cluster']['nodes_standby']))
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_3(self):
-        key = 'common_pattern_3'
+    def __common_pattern_4(self):
+        key = 'common_pattern_4'
         result = {
             'title': "Cluster Maintenance Mode",
             'description': 'In Maintenance Mode, Cluster: False, Nodes: None',
@@ -240,30 +208,89 @@ class PacemakerClusterAnalysis():
             result['description'] = "In Maintenance Mode, Cluster: False, Nodes: {}".format(' '.join(self.report_data['cluster']['nodes_maintenance']))
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_4(self):
-        key = 'common_pattern_4'
+    def __common_pattern_3(self):
+        key = 'common_pattern_3'
         result = {
-            'title': "Cluster Standby Mode",
-            'description': 'Nodes in standby mode: None',
+            'title': "Verify Clean SBD",
+            'description': 'SBD nodes with dirty slots: None',
             'product': 'SUSE Linux Enterprise High Availability Extension',
-            'component': 'Maintenance',
-            'subcomponent': 'Standby',
+            'component': 'Fencing',
+            'subcomponent': 'SBD',
             'applicable': False,
-            'kb_search_terms': "cluster standby mode",
+            'kb_search_terms': "stonith sbd nodes not clear",
             'suggestions': {}
         }
         self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
         preferred = {
             "doc1": {
                 "id": "Documentation",
-                "title": "Executing maintenance tasks",
-                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-maintenance.html",
+                "title": "Storage protection and SBD",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-storage-protect.html",
             },
         }
 
-        nodes_in_standy = len(self.report_data['cluster']['nodes_standby'])
-        if( nodes_in_standy > 0 ):
+        unclean_nodes = []
+        if( self.report_data['cluster']['stonith']['sbd']['found'] is True and self.report_data['cluster']['stonith']['sbd']['all_clear'] == 0 ):
+            for node in self.report_data['cluster']['stonith']['sbd']['nodes']:
+                if( self.report_data['cluster']['stonith']['sbd']['nodes'][node]['is_clear'] is False ):
+                    unclean_nodes.append(node)
             result = self.__set_applicable(result, preferred, key)
-            result['description'] = "Nodes in standby mode: {}".format(' '.join(self.report_data['cluster']['nodes_standby']))
+            result['description'] = "SBD nodes with dirty slots: {}".format(' '.join(unclean_nodes))
         self.analysis_data['results'][key] = result
+
+    def __common_pattern_2(self):
+        key = 'common_pattern_2'
+        result = {
+            'title': "Split Brain Detection",
+            'description': 'Detected possible split brain cluster',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Fencing',
+            'subcomponent': 'Split Brain',
+            'applicable': False,
+            'kb_search_terms': "troubleshooting stonith split brain",
+            'suggestions': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Fencing and STONITH",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-fencing.html",
+            },
+        }
+        dc_list = []
+
+        for node in self.report_data['cluster']['nodes']:
+            if self.report_data['cluster']['nodes'][node]['is_dc_crm'] or self.report_data['cluster']['nodes'][node]['is_dc_local']:
+                dc_list.append(node)
+        if len(dc_list) > 1:
+            result['description'] = result['description'] + ", multiple DC nodes: " + " ".join(dc_list)
+            result = self.__set_applicable(result, preferred, key)
+        self.analysis_data['results'][key] = result
+
+    def __common_pattern_1(self):
+        key = 'common_pattern_1'
+        result = {
+            'title': "Fencing Resource Required",
+            'description': 'Missing STONITH resource required for supportability',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Fencing',
+            'subcomponent': 'STONITH',
+            'applicable': False,
+            'kb_search_terms': "stonith resource not enabled unsupported",
+            'suggestions': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Hardware Requirements, Node fencing/STONITH",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-requirements.html",
+            },
+        }
+
+        if self.report_data['cluster']['stonith']['enabled'] is False:
+            result = self.__set_applicable(result, preferred, key)
+        self.analysis_data['results'][key] = result
+
 
