@@ -58,6 +58,7 @@ class PacemakerClusterAnalysis():
             self.__cpat4: True,
             self.__cpat5: True,
             self.__cpat6: True,
+            self.__cpat7: True,
         }
         self.count = {
             'total': len(self.pattern_manifest),
@@ -122,6 +123,60 @@ class PacemakerClusterAnalysis():
 #################################################################################################
 # Common Pattern Definitions
 #################################################################################################
+# self.report_data['cluster']['nodes'][node]['sysinfo']
+# self.report_data['cluster']['nodes'][node]['sysstats']
+# self.report_data['cluster']['nodes'][node]['is_included']
+# self.report_data['cluster']['stonith']['sbd']['found']
+# self.report_data['cluster']['cnt_nodes_configured']
+# self.report_data['cluster']['cnt_nodes_included']
+
+    def __cpat7(self):
+        key = 'cpat7'
+        result = {
+            'title': "Consistent Package Versions Across Nodes",
+            'description': 'Nodes with inconsistent package versions: None',
+            'product': 'SUSE Linux Enterprise High Availability Extension',
+            'component': 'Maintenance',
+            'subcomponent': 'Update',
+            'applicable': False,
+            'kb_search_terms': "updating cluster software",
+            'suggestions': {}
+        }
+        self.msg.verbose(" Searching [{}/{}]".format(self.count['current'], self.count['total']), result['title'])
+        preferred = {
+            "doc1": {
+                "id": "Documentation",
+                "title": "Upgrading your cluster and updating software packages",
+                "url": "https://documentation.suse.com/sle-ha/15-SP7/html/SLE-HA-all/cha-ha-migration.html",
+            },
+        }
+
+        pkg_version_found = False
+        pkg_versions = {
+            'kernel': '', 
+            'corosync': '', 
+            'pacemaker': '', 
+            'resource-agents': '', 
+            'sbd': '', 
+        }
+        dirty_nodes = {}
+        # Enhancement request: select nodes that have old package versions compared to other nodes
+        for node in self.report_data['cluster']['nodes']:
+            if( self.report_data['cluster']['nodes'][node]['is_included'] is True ):
+                for pkg in pkg_versions.keys():
+                    if( pkg_version_found is True ):
+                        if( pkg in self.report_data['cluster']['nodes'][node]['sysinfo'] ):
+                            if( pkg_versions[pkg] != self.report_data['cluster']['nodes'][node]['sysinfo'][pkg] ):
+                                dirty_nodes[node] = True
+                    else:
+                        if( pkg in self.report_data['cluster']['nodes'][node]['sysinfo'] ):
+                            pkg_versions[pkg] = self.report_data['cluster']['nodes'][node]['sysinfo'][pkg]
+                pkg_version_found = True
+        if( dirty_nodes ):
+            node_list = list(dirty_nodes.keys())
+            result['description'] = "Inconsistent package versions: {}".format(' '.join(node_list))
+            result = self.__set_applicable(result, preferred, key)
+        self.analysis_data['results'][key] = result
 
     def __cpat6(self):
         key = 'cpat6'
