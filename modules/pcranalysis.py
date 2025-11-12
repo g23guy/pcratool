@@ -52,12 +52,12 @@ class PacemakerClusterAnalysis():
             'results': {},
         }
         self.pattern_manifest = {
-            self.__common_pattern_1: True,
-            self.__common_pattern_2: True,
-            self.__common_pattern_3: True,
-            self.__common_pattern_4: True,
-            self.__common_pattern_5: True,
-            self.__common_pattern_6: True,
+            self.__cpat1: True,
+            self.__cpat2: True,
+            self.__cpat3: True,
+            self.__cpat4: True,
+            self.__cpat5: True,
+            self.__cpat6: True,
         }
         self.count = {
             'total': len(self.pattern_manifest),
@@ -123,8 +123,8 @@ class PacemakerClusterAnalysis():
 # Common Pattern Definitions
 #################################################################################################
 
-    def __common_pattern_6(self):
-        key = 'common_pattern_6'
+    def __cpat6(self):
+        key = 'cpat6'
         result = {
             'title': "Node Directory Permissions",
             'description': 'Nodes with invalid permissions.txt: None',
@@ -148,8 +148,8 @@ class PacemakerClusterAnalysis():
             result['description'] = "Fix permissions or ownership described in permissions.txt for nodes: {}".format(' '.join(dirty_nodes))
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_5(self):
-        key = 'common_pattern_5'
+    def __cpat5(self):
+        key = 'cpat5'
         result = {
             'title': "Cluster Standby Mode",
             'description': 'Nodes in standby mode: None',
@@ -175,8 +175,8 @@ class PacemakerClusterAnalysis():
             result['description'] = "Nodes in standby mode: {}".format(' '.join(self.report_data['cluster']['nodes_standby']))
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_4(self):
-        key = 'common_pattern_4'
+    def __cpat4(self):
+        key = 'cpat4'
         result = {
             'title': "Cluster Maintenance Mode",
             'description': 'In Maintenance Mode, Cluster: False, Nodes: None',
@@ -208,8 +208,8 @@ class PacemakerClusterAnalysis():
             result['description'] = "In Maintenance Mode, Cluster: False, Nodes: {}".format(' '.join(self.report_data['cluster']['nodes_maintenance']))
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_3(self):
-        key = 'common_pattern_3'
+    def __cpat3(self):
+        key = 'cpat3'
         result = {
             'title': "Verify Clean SBD",
             'description': 'SBD nodes with dirty slots: None',
@@ -238,8 +238,8 @@ class PacemakerClusterAnalysis():
             result['description'] = "SBD nodes with dirty slots: {}".format(' '.join(unclean_nodes))
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_2(self):
-        key = 'common_pattern_2'
+    def __cpat2(self):
+        key = 'cpat2'
         result = {
             'title': "Split Brain Detection",
             'description': 'Detected possible split brain cluster',
@@ -268,8 +268,8 @@ class PacemakerClusterAnalysis():
             result = self.__set_applicable(result, preferred, key)
         self.analysis_data['results'][key] = result
 
-    def __common_pattern_1(self):
-        key = 'common_pattern_1'
+    def __cpat1(self):
+        key = 'cpat1'
         result = {
             'title': "Fencing Resource Required",
             'description': 'Missing STONITH resource required for supportability',
