@@ -48,6 +48,7 @@ class PacemakerClusterAnalysis():
             'time_analyzed': '',
             'patterns_total': 0,
             'patterns_applied': 0,
+            'patterns_applied_keys': [],
             'results': {},
         }
         self.pattern_manifest = {
@@ -90,6 +91,13 @@ class PacemakerClusterAnalysis():
         else:
             self.msg.min("Cluster Data", "Analyzing, TID Searching Disabled")
         self.__apply_common_patterns()
+        self.msg.min("Cluster Data", "Total Patterns Evaluated: {}, Applicable to Cluster: {}".format(self.analysis_data['patterns_total'], self.analysis_data['patterns_applied']))
+        if( self.msg.get_level() >= self.msg.LOG_NORMAL ):
+            total_keys = len(self.analysis_data['patterns_applied_keys'])
+            count_keys = 0
+            for key in self.analysis_data['patterns_applied_keys']:
+                count_keys += 1
+                self.msg.normal(" Applicable Pattern [{}/{}]".format(count_keys, total_keys), self.analysis_data['results'][key]['description'])
 
     def __apply_common_patterns(self):
         self.msg.normal("Common Patterns", "Applying")
@@ -97,10 +105,11 @@ class PacemakerClusterAnalysis():
             self.count['current'] += 1
             common_pattern()
 
-    def __set_applicable(self, result, preferred):
+    def __set_applicable(self, result, preferred, key):
         num_tids = self.TID_MAX
         result['applicable'] = True
         self.analysis_data['patterns_applied'] += 1
+        self.analysis_data['patterns_applied_keys'].append(key)
         if self.report_data['source_data']['search_tids']:
             num_tids -= len(preferred)
             tids = suse_kb.search_kb(result['product'], result['kb_search_terms'], num_tids)
@@ -117,7 +126,7 @@ class PacemakerClusterAnalysis():
         key = 'common_pattern_0'
         result = {
             'title': "Fencing Resource Required",
-            'description': 'Clusters are supported when a stonith fencing resource is enabled.',
+            'description': 'Missing STONITH resource required for supportability',
             'product': 'SUSE Linux Enterprise High Availability Extension',
             'component': 'Fencing',
             'subcomponent': 'STONITH',
@@ -135,7 +144,7 @@ class PacemakerClusterAnalysis():
         }
 
         if self.report_data['cluster']['stonith']['enabled'] is False:
-            result = self.__set_applicable(result, preferred)
+            result = self.__set_applicable(result, preferred, key)
         self.analysis_data['results'][key] = result
 
     def __common_pattern_1(self):
@@ -164,15 +173,15 @@ class PacemakerClusterAnalysis():
             if self.report_data['cluster']['nodes'][node]['is_dc_crm'] or self.report_data['cluster']['nodes'][node]['is_dc_local']:
                 dc_list.append(node)
         if len(dc_list) > 1:
-            result['description'] = result['description'] + " per DC on nodes: " + " ".join(dc_list)
-            result = self.__set_applicable(result, preferred)
+            result['description'] = result['description'] + ", multiple DC nodes: " + " ".join(dc_list)
+            result = self.__set_applicable(result, preferred, key)
         self.analysis_data['results'][key] = result
 
     def __common_pattern_2(self):
         key = 'common_pattern_2'
         result = {
             'title': "Verify Clean SBD",
-            'description': 'All slots on all SBD nodes should be clear',
+            'description': 'SBD nodes with dirty slots: None',
             'product': 'SUSE Linux Enterprise High Availability Extension',
             'component': 'Fencing',
             'subcomponent': 'SBD',
@@ -189,8 +198,13 @@ class PacemakerClusterAnalysis():
             },
         }
 
+        unclean_nodes = []
         if( self.report_data['cluster']['stonith']['sbd']['found'] is True and self.report_data['cluster']['stonith']['sbd']['all_clear'] == 0 ):
-            result = self.__set_applicable(result, preferred)
+            for node in self.report_data['cluster']['stonith']['sbd']['nodes']:
+                if( self.report_data['cluster']['stonith']['sbd']['nodes'][node]['is_clear'] is False ):
+                    unclean_nodes.append(node)
+            result = self.__set_applicable(result, preferred, key)
+            result['description'] = "SBD nodes with dirty slots: {}".format(' '.join(unclean_nodes))
         self.analysis_data['results'][key] = result
 
     def __common_pattern_3(self):
@@ -216,13 +230,13 @@ class PacemakerClusterAnalysis():
 
         nodes_in_maint = len(self.report_data['cluster']['nodes_maintenance'])
         if( self.report_data['cluster']['cluster_maintenance'] is True ):
-            result = self.__set_applicable(result, preferred)
+            result = self.__set_applicable(result, preferred, key)
             if( nodes_in_maint > 0 ):
                 result['description'] = "In Maintenance Mode, Cluster: True, Nodes: {}".format(' '.join(self.report_data['cluster']['nodes_maintenance']))
             else:
                 result['description'] = "In Maintenance Mode, Cluster: True, Nodes: None"
         elif( nodes_in_maint > 0 ):
-            result = self.__set_applicable(result, preferred)
+            result = self.__set_applicable(result, preferred, key)
             result['description'] = "In Maintenance Mode, Cluster: False, Nodes: {}".format(' '.join(self.report_data['cluster']['nodes_maintenance']))
         self.analysis_data['results'][key] = result
 
@@ -249,7 +263,7 @@ class PacemakerClusterAnalysis():
 
         nodes_in_standy = len(self.report_data['cluster']['nodes_standby'])
         if( nodes_in_standy > 0 ):
-            result = self.__set_applicable(result, preferred)
+            result = self.__set_applicable(result, preferred, key)
             result['description'] = "Nodes in standby mode: {}".format(' '.join(self.report_data['cluster']['nodes_standby']))
         self.analysis_data['results'][key] = result
 
