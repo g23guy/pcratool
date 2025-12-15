@@ -823,6 +823,7 @@ def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
         if len(constraints) > 0:
             cib_data["constraints"] = {}
             rsc_colocation = constraints[0].getElementsByTagName("rsc_colocation")
+            rsc_location = constraints[0].getElementsByTagName("rsc_location")
             if len(rsc_colocation) > 0:
                 cib_data["constraints"]["colocations"] = {}
                 for colocation in rsc_colocation:
@@ -830,6 +831,13 @@ def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
                     cib_data["constraints"]["colocations"][colocation_id] = {}
                     for attr in colocation.attributes.keys():
                         cib_data["constraints"]["colocations"][colocation_id][attr] = colocation.getAttribute(attr)
+            if len(rsc_location) > 0:
+                cib_data["constraints"]["locations"] = {}
+                for location in rsc_location:
+                    location_id = location.getAttribute("id")
+                    cib_data["constraints"]["locations"][location_id] = {}
+                    for attr in location.attributes.keys():
+                        cib_data["constraints"]["locations"][location_id][attr] = location.getAttribute(attr)
 
          # Get resource defaults
         rsc_defaults = xdom.getElementsByTagName("rsc_defaults")
