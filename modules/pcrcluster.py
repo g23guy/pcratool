@@ -644,11 +644,12 @@ def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
                 if node_uname not in cib_data:
                     cib_data["nodes"][node_uname] = {}
                 instance_attributes = node.getElementsByTagName("instance_attributes")
-                nvpairs = instance_attributes[0].getElementsByTagName("nvpair") 
-                for nvp in nvpairs:
-                    nv_name = nvp.getAttribute("name")
-                    nv_value = nvp.getAttribute("value")
-                    cib_data["nodes"][node_uname][nv_name] = nv_value
+                if len(instance_attributes) > 0:
+                    nvpairs = instance_attributes[0].getElementsByTagName("nvpair") 
+                    for nvp in nvpairs:
+                        nv_name = nvp.getAttribute("name")
+                        nv_value = nvp.getAttribute("value")
+                        cib_data["nodes"][node_uname][nv_name] = nv_value
 
         # Get resources 
         resources_parent = xdom.getElementsByTagName("resources")
@@ -837,7 +838,7 @@ def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
             meta_attributes = rsc_defaults[0].getElementsByTagName("meta_attributes")
             if len(meta_attributes) > 0:
                 rsc_defaults_id =  meta_attributes[0].getAttribute("id")
-                print(f"Resource Defaults ID: {rsc_defaults_id}")
+#                print(f"Resource Defaults ID: {rsc_defaults_id}")
                 cib_data["rsc_defaults"][rsc_defaults_id] =   {}
                 nvpairs = meta_attributes[0].getElementsByTagName("nvpair")
                 if len(nvpairs) > 0:
@@ -853,7 +854,7 @@ def _parse_cib_xml_cfg(msg, dirpath, node_name, cluster_data):
             meta_attributes = op_defaults[0].getElementsByTagName("meta_attributes")
             if len(meta_attributes) > 0:
                 op_defaults_id =  meta_attributes[0].getAttribute("id")
-                print(f"Operation Defaults ID: {op_defaults_id}")
+#                print(f"Operation Defaults ID: {op_defaults_id}")
                 cib_data["op_defaults"][op_defaults_id] =   {}
                 nvpairs = meta_attributes[0].getElementsByTagName("nvpair")
                 if len(nvpairs) > 0:
@@ -966,8 +967,7 @@ def _get_nodes_cluster_cib(msg, file_data, cluster_data):
         if node_name not in cluster_data['nodes']:
             cluster_data['nodes'][node_name] = {}
             msg.debug("_get_nodes_cluster_cib:", "Added {} from {}".format(node_name, "directory"))
-#       next line fails %%%
-#       cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
+        cluster_data = _parse_cib_xml_cfg(msg, node_data_source, node_name, cluster_data)
 
     return cluster_data
             
